@@ -161,8 +161,8 @@ export function getStoredProfile(): UserProfile {
         grade: found.grade || 'Lớp 4',
         favoriteSubject: found.subject || 'Toán',
         school: found.school || 'Trường Tiểu học',
-        xp: found.role === 'admin' ? 999 : 50,
-        streakDays: 1,
+        xp: 0,
+        streakDays: 0,
         lastActiveDate: new Date().toISOString().split('T')[0],
         stats: {
           questionsAsked: 0,

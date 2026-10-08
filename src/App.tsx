@@ -60,11 +60,12 @@ export default function App() {
     initDataFromGoogleSheets();
   }, []);
 
-  // Initialize auth listener
+  // Initialize auth listener (chỉ cập nhật khi tài khoản đã đăng nhập thực tế, không tự động đăng nhập khi đang là Khách)
   useEffect(() => {
     initAuth((user) => {
       if (user && user.displayName) {
         setProfile((prev) => {
+          if (prev.isGuest) return prev;
           const updated = {
             ...prev,
             name: user.displayName || prev.name,
@@ -285,6 +286,7 @@ export default function App() {
           <UserGuide
             setActiveTab={setActiveTab}
             onOpenAuth={() => setAuthModalOpen(true)}
+            currentUser={profile}
           />
         )}
       </main>

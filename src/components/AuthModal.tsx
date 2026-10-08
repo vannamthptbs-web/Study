@@ -119,14 +119,6 @@ export const AuthModal: React.FC<Props> = ({
     }
   };
 
-  // Quick fill admin credentials
-  const handleQuickFillAdmin = () => {
-    setLoginIdentifier('admin');
-    const adminAcc = getStoredAccounts().find((a) => a.username === 'admin');
-    setLoginPassword(adminAcc?.password || 'admin123');
-    setErrorMsg(null);
-  };
-
   // 2. Handle Registration (Mở quyền đăng ký cho GV và HS)
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -425,7 +417,7 @@ export const AuthModal: React.FC<Props> = ({
                       required
                       value={loginIdentifier}
                       onChange={(e) => setLoginIdentifier(e.target.value)}
-                      placeholder="admin hoặc email/tên đăng nhập..."
+                      placeholder="Nhập tên đăng nhập hoặc email..."
                       className="w-full pl-9 pr-3 py-2.5 text-xs sm:text-sm border border-slate-300 rounded-xl focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
                     />
                   </div>
@@ -453,23 +445,6 @@ export const AuthModal: React.FC<Props> = ({
                       {showLoginPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                     </button>
                   </div>
-                </div>
-
-                {/* Quick Hint for Admin Account */}
-                <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between text-xs text-slate-600">
-                  <div className="flex items-center gap-1.5">
-                    <ShieldCheck className="w-4 h-4 text-indigo-600" />
-                    <span>
-                      Tài khoản Admin: <strong>admin</strong> / <strong>admin123</strong>
-                    </span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={handleQuickFillAdmin}
-                    className="text-xs text-indigo-700 font-bold hover:underline"
-                  >
-                    Điền nhanh
-                  </button>
                 </div>
 
                 {errorMsg && (
@@ -735,7 +710,7 @@ export const AuthModal: React.FC<Props> = ({
                   </div>
                 </div>
 
-                {sheetUrl && (
+                {currentUser.role === 'admin' && sheetUrl && (
                   <div className="pt-1">
                     <a
                       href={sheetUrl}
@@ -744,7 +719,7 @@ export const AuthModal: React.FC<Props> = ({
                       className="inline-flex items-center gap-1.5 text-xs text-emerald-700 font-bold hover:underline"
                     >
                       <Sheet className="w-3.5 h-3.5" />
-                      <span>Xem bảng điểm của bạn trên Google Sheets ↗</span>
+                      <span>Xem bảng tính Google Sheets quản trị (Chỉ Admin) ↗</span>
                     </a>
                   </div>
                 )}

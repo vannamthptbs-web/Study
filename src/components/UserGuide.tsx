@@ -22,16 +22,18 @@ import {
   FileSpreadsheet,
   GraduationCap,
   Users,
+  Code,
 } from 'lucide-react';
-import { ActiveTab } from '../types/study';
+import { ActiveTab, UserProfile } from '../types/study';
 import { DEFAULT_SHEET_URL, getSpreadsheetUrl } from '../services/firebaseWorkspace';
 
 interface Props {
   setActiveTab: (tab: ActiveTab) => void;
   onOpenAuth?: () => void;
+  currentUser?: UserProfile;
 }
 
-export const UserGuide: React.FC<Props> = ({ setActiveTab, onOpenAuth }) => {
+export const UserGuide: React.FC<Props> = ({ setActiveTab, onOpenAuth, currentUser }) => {
   const [activeSection, setActiveSection] = useState<string>('overview');
   const [copiedLink, setCopiedLink] = useState(false);
   const currentSheetUrl = getSpreadsheetUrl() || DEFAULT_SHEET_URL;
@@ -710,70 +712,64 @@ export const UserGuide: React.FC<Props> = ({ setActiveTab, onOpenAuth }) => {
                 <ShieldCheck className="w-6 h-6" />
               </div>
               <div>
-                <span className="text-xs font-bold text-rose-600 uppercase tracking-wider">Đặc quyền quản trị</span>
+                <span className="text-xs font-bold text-rose-600 uppercase tracking-wider">Đặc quyền quản trị (Chỉ Admin)</span>
                 <h2 className="text-xl sm:text-2xl font-extrabold text-slate-900">
-                  Menu "Quản trị" (Admin Panel) – Vị Trí Lưu Link Google Sheet & Quản Lý Toàn Bộ
+                  Menu "Quản trị" (Admin Panel) – Cấu Hình Ứng Dụng & Quản Trị Hệ Thống
                 </h2>
               </div>
             </div>
 
-            <button
-              onClick={() => setActiveTab('admin')}
-              className="px-4 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-800 text-xs font-bold flex items-center gap-1.5 transition-colors"
-            >
-              <span>Mở tab Quản trị</span>
-              <ArrowRight className="w-3.5 h-3.5" />
-            </button>
+            {currentUser?.role === 'admin' ? (
+              <button
+                onClick={() => setActiveTab('admin')}
+                className="px-4 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-800 text-xs font-bold flex items-center gap-1.5 transition-colors"
+              >
+                <span>Mở tab Quản trị</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+            ) : (
+              <span className="px-3 py-1.5 rounded-xl bg-slate-100 text-slate-500 text-xs font-semibold">
+                🔒 Dành riêng cho Admin
+              </span>
+            )}
           </div>
 
           <div className="space-y-4 text-xs sm:text-sm text-slate-600 leading-relaxed">
-            <p>
-              Menu <strong>Quản trị</strong> mở toàn quyền cho Ban Quản trị hệ thống (Admin). Người dùng có thể đăng nhập
-              bằng tài khoản Admin mặc định: <code>admin</code> (mật khẩu: <code>admin123</code>).
-            </p>
+            <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 text-xs flex items-center gap-2.5">
+              <ShieldCheck className="w-5 h-5 text-amber-600 shrink-0" />
+              <span>
+                <strong>Bảo mật phân quyền:</strong> Chỉ có Quản trị viên (Admin) sau khi nhập đúng thông tin đăng nhập mới có quyền xem cấu hình link Google Sheets, xem danh sách học sinh và giáo viên, đổi mật khẩu và xem mã Apps Script chuẩn.
+              </span>
+            </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-1">
-              <div className="p-4 rounded-2xl bg-indigo-50/70 border border-indigo-200 space-y-2">
-                <div className="font-bold text-indigo-950 flex items-center justify-between">
-                  <div className="flex items-center gap-1.5">
-                    <Database className="w-4 h-4 text-indigo-600" />
-                    <span>Vị Trí Lưu Link Google Sheet</span>
-                  </div>
-                  <button
-                    onClick={handleCopySheetLink}
-                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-mono text-[10px] transition-colors"
-                  >
-                    {copiedLink ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
-                    <span>{copiedLink ? 'Đã sao chép' : 'Sao chép'}</span>
-                  </button>
+              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-2">
+                <div className="font-bold text-slate-900 flex items-center gap-1.5">
+                  <Database className="w-4 h-4 text-indigo-600" />
+                  <span>Cấu Hình Link Google Sheet (Chỉ Admin)</span>
                 </div>
-                <p className="text-xs text-indigo-900 leading-relaxed">
-                  Đường link Web App Google Apps Script dùng làm database lưu trữ dữ liệu tập trung duy nhất của App:
+                <p className="text-xs text-slate-600">
+                  Nơi Admin gắn đường link Web App Google Apps Script để làm database duy nhất. Học sinh và giáo viên không được xem hoặc chỉnh sửa liên kết này.
                 </p>
-                <div className="p-2.5 rounded-xl bg-white border border-indigo-200 font-mono text-[11px] break-all text-indigo-950 font-semibold select-all">
-                  https://script.google.com/macros/s/AKfycbwSHX1Q0KVnrdab_vxKpdt_lEUZ89CrUeYsuB1_ZU0qNWtYPIVrAfw3Ng8w71vHl3IwqQ/exec
-                </div>
               </div>
 
               <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-2">
                 <div className="font-bold text-slate-900 flex items-center gap-1.5">
                   <Users className="w-4 h-4 text-indigo-600" />
-                  <span>Quản Lý Toàn Bộ Tài Khoản</span>
+                  <span>Danh Sách Học Sinh & Giáo Viên (Chỉ Admin)</span>
                 </div>
                 <p className="text-xs text-slate-600">
-                  Thêm tài khoản mới, xem mật khẩu, đặt lại mật khẩu cho bất kỳ ai, thay đổi phân quyền (Admin, Giáo viên,
-                  Học sinh). Mọi chỉnh sửa được đồng bộ trực tiếp vào Google Sheets theo ID duy nhất!
+                  Quản lý danh sách toàn bộ người dùng đăng ký, đặt lại mật khẩu theo ID duy nhất, cập nhật phân quyền (Admin, Giáo viên, Học sinh).
                 </p>
               </div>
 
               <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-2">
                 <div className="font-bold text-slate-900 flex items-center gap-1.5">
-                  <CheckCircle2 className="w-4 h-4 text-indigo-600" />
-                  <span>Theo Dõi Bài Thi & Xuất CSV</span>
+                  <Code className="w-4 h-4 text-indigo-600" />
+                  <span>Mã Apps Script Chuẩn (Chỉ Admin)</span>
                 </div>
                 <p className="text-xs text-slate-600">
-                  Xem danh sách toàn bộ bài làm trắc nghiệm của học sinh trong hệ thống, tìm kiếm theo tên, khối lớp, môn
-                  học và xuất báo cáo CSV hoàn chỉnh.
+                  Cung cấp mã nguồn Google Apps Script (.gs) hoàn chỉnh chuẩn hóa cho Google Sheet. Chỉ Admin mới được xem và sao chép.
                 </p>
               </div>
             </div>
@@ -819,7 +815,7 @@ export const UserGuide: React.FC<Props> = ({ setActiveTab, onOpenAuth }) => {
                 động ghi trực tiếp vào Google Sheets (sheet <code>TaiKhoan</code>).
               </p>
               <p className="text-[11px] text-slate-500">
-                Tài khoản Admin khởi tạo: <strong>admin</strong> / Mật khẩu: <strong>admin123</strong>.
+                Tài khoản Quản trị viên (Admin) được cấp quyền riêng biệt cho Ban Quản trị nhà trường để bảo mật hệ thống.
               </p>
             </div>
 
@@ -874,21 +870,30 @@ export const UserGuide: React.FC<Props> = ({ setActiveTab, onOpenAuth }) => {
             </div>
           </div>
 
-          <div className="p-4 rounded-2xl bg-white/5 border border-white/10 space-y-2">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
-              <span className="text-emerald-300 font-bold">Link Google Sheet lưu trữ dữ liệu hiện tại:</span>
-              <button
-                onClick={handleCopySheetLink}
-                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-200 border border-emerald-400/30 font-mono text-[11px] transition-colors"
-              >
-                {copiedLink ? <Check className="w-3.5 h-3.5 text-emerald-300" /> : <Copy className="w-3.5 h-3.5" />}
-                <span>{copiedLink ? 'Đã sao chép' : 'Sao chép link'}</span>
-              </button>
+          {currentUser?.role === 'admin' ? (
+            <div className="p-4 rounded-2xl bg-white/5 border border-white/10 space-y-2">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                <span className="text-emerald-300 font-bold">Link Google Sheet lưu trữ dữ liệu hiện tại (Chỉ Admin):</span>
+                <button
+                  onClick={handleCopySheetLink}
+                  className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-200 border border-emerald-400/30 font-mono text-[11px] transition-colors"
+                >
+                  {copiedLink ? <Check className="w-3.5 h-3.5 text-emerald-300" /> : <Copy className="w-3.5 h-3.5" />}
+                  <span>{copiedLink ? 'Đã sao chép' : 'Sao chép link'}</span>
+                </button>
+              </div>
+              <div className="font-mono text-xs text-slate-300 break-all bg-black/30 p-2.5 rounded-xl border border-white/5">
+                {currentSheetUrl}
+              </div>
             </div>
-            <div className="font-mono text-xs text-slate-300 break-all bg-black/30 p-2.5 rounded-xl border border-white/5">
-              {currentSheetUrl}
+          ) : (
+            <div className="p-4 rounded-2xl bg-white/5 border border-white/10 flex items-center gap-3 text-xs text-slate-300">
+              <ShieldCheck className="w-5 h-5 text-emerald-400 shrink-0" />
+              <span>
+                <strong>Bảo mật thông tin:</strong> Vị trí cấu hình liên kết Google Sheets và mã Apps Script chỉ hiển thị cho Quản trị viên (Admin) trong mục Quản trị.
+              </span>
             </div>
-          </div>
+          )}
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs sm:text-sm text-slate-200">
             <div className="p-4 rounded-2xl bg-white/5 border border-white/10 space-y-1.5">

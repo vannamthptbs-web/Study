@@ -73,12 +73,16 @@ export const Header: React.FC<Props> = ({
       icon: BarChart3,
       badge: 'Lỗ hổng & Điểm',
     },
-    {
-      id: 'admin' as ActiveTab,
-      label: 'Quản trị',
-      icon: ShieldCheck,
-      badge: profile.role === 'admin' ? 'Đang bật' : 'Admin & Sheet',
-    },
+    ...(profile.role === 'admin'
+      ? [
+          {
+            id: 'admin' as ActiveTab,
+            label: 'Quản trị',
+            icon: ShieldCheck,
+            badge: 'Admin',
+          },
+        ]
+      : []),
     {
       id: 'guide' as ActiveTab,
       label: 'Hướng dẫn',
@@ -169,20 +173,6 @@ export const Header: React.FC<Props> = ({
 
           {/* User Account & Gamification Stats */}
           <div className="flex items-center gap-2 sm:gap-3">
-            {/* Quick User Guide Button */}
-            <button
-              onClick={() => setActiveTab('guide')}
-              title="Mở Sổ tay hướng dẫn sử dụng chi tiết các menu và nội dung trong App"
-              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border text-xs font-bold transition-all shadow-2xs hover:scale-102 ${
-                activeTab === 'guide'
-                  ? 'bg-amber-100 border-amber-300 text-amber-900 ring-2 ring-amber-400/30'
-                  : 'bg-amber-50 hover:bg-amber-100 border-amber-200/80 text-amber-800'
-              }`}
-            >
-              <HelpCircle className="w-3.5 h-3.5 text-amber-600" />
-              <span className="hidden sm:inline">Hướng dẫn</span>
-            </button>
-
             {/* Quick Formula Guide Button */}
             {onOpenFormulas && (
               <button
@@ -195,17 +185,17 @@ export const Header: React.FC<Props> = ({
               </button>
             )}
 
-            {/* Google Sheet badge if linked */}
-            {sheetUrl && (
+            {/* Google Sheet badge ONLY visible for Admin */}
+            {profile.role === 'admin' && sheetUrl && (
               <a
                 href={sheetUrl}
                 target="_blank"
                 rel="noreferrer"
-                title="Bảng điểm Google Sheets tự động lưu"
+                title="Bảng tính Google Sheets quản trị (Chỉ Admin)"
                 className="hidden lg:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-bold hover:bg-emerald-100 transition-colors shadow-2xs"
               >
                 <Sheet className="w-3.5 h-3.5 text-emerald-600" />
-                <span>Google Sheets</span>
+                <span>Google Sheets (Admin)</span>
               </a>
             )}
 

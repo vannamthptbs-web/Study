@@ -83,7 +83,7 @@ export const AdminPanel: React.FC<Props> = ({
 
   const [roleFilter, setRoleFilter] = useState<'all' | UserRole>('all');
   const [searchTerm, setSearchTerm] = useState('');
-  const [activeAdminSubTab, setActiveAdminSubTab] = useState<'sheet' | 'accounts' | 'quizzes'>('sheet');
+  const [activeAdminSubTab, setActiveAdminSubTab] = useState<'sheet' | 'accounts' | 'quizzes' | 'script'>('sheet');
 
   // Password reset modal state
   const [resettingUser, setResettingUser] = useState<AppUser | null>(null);
@@ -105,9 +105,9 @@ export const AdminPanel: React.FC<Props> = ({
   // Visibility toggle for account passwords in table
   const [visiblePasswords, setVisiblePasswords] = useState<Record<string, boolean>>({});
 
-  // Non-admin login form state inside Admin panel
-  const [adminLoginId, setAdminLoginId] = useState('admin');
-  const [adminLoginPw, setAdminLoginPw] = useState('admin123');
+  // Non-admin login form state inside Admin panel (Không để sẵn tài khoản hay mật khẩu)
+  const [adminLoginId, setAdminLoginId] = useState('');
+  const [adminLoginPw, setAdminLoginPw] = useState('');
   const [adminLoginError, setAdminLoginError] = useState<string | null>(null);
   const [adminLoginLoading, setAdminLoginLoading] = useState(false);
 
@@ -124,6 +124,10 @@ export const AdminPanel: React.FC<Props> = ({
   // 1. Direct Admin Login for Non-Admin users
   const handleAdminLoginSubmit = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
+    if (!adminLoginId.trim() || !adminLoginPw.trim()) {
+      setAdminLoginError('Vui lòng nhập tài khoản và mật khẩu Quản trị viên.');
+      return;
+    }
     setAdminLoginError(null);
     setAdminLoginLoading(true);
 
@@ -135,21 +139,6 @@ export const AdminPanel: React.FC<Props> = ({
       onNotification('Đã mở toàn bộ quyền Quản trị viên (Admin) thành công! 🚀');
     } else {
       setAdminLoginError(res.error || 'Tài khoản hoặc mật khẩu Quản trị không chính xác.');
-    }
-  };
-
-  // Quick 1-click admin login
-  const handleQuickLoginAdmin = () => {
-    setAdminLoginId('admin');
-    const adminAccount = getStoredAccounts().find((a) => a.username === 'admin');
-    const pw = adminAccount?.password || 'admin123';
-    setAdminLoginPw(pw);
-    const res = loginUser('admin', pw);
-    if (res.success && res.profile) {
-      onUserChanged(res.profile);
-      onNotification('Đã kích hoạt toàn bộ quyền Quản trị viên (Admin) thành công! 🚀');
-    } else {
-      setAdminLoginError(res.error || 'Không thể đăng nhập tài khoản Quản trị.');
     }
   };
 
@@ -445,7 +434,7 @@ export const AdminPanel: React.FC<Props> = ({
               type="text"
               value={adminLoginId}
               onChange={(e) => setAdminLoginId(e.target.value)}
-              placeholder="admin"
+              placeholder="Nhập tài khoản quản trị viên..."
               className="w-full px-3.5 py-2.5 text-xs sm:text-sm border border-slate-300 rounded-xl focus:outline-none focus:border-indigo-500"
             />
           </div>
@@ -458,7 +447,7 @@ export const AdminPanel: React.FC<Props> = ({
               type="password"
               value={adminLoginPw}
               onChange={(e) => setAdminLoginPw(e.target.value)}
-              placeholder="••••••••"
+              placeholder="Nhập mật khẩu quản trị..."
               className="w-full px-3.5 py-2.5 text-xs sm:text-sm border border-slate-300 rounded-xl focus:outline-none focus:border-indigo-500"
             />
           </div>
@@ -470,22 +459,13 @@ export const AdminPanel: React.FC<Props> = ({
             </div>
           )}
 
-          <div className="pt-2 flex flex-col gap-2">
+          <div className="pt-2">
             <button
               type="submit"
               disabled={adminLoginLoading}
               className="w-full py-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs sm:text-sm shadow-sm transition-all"
             >
               {adminLoginLoading ? 'Đang xác thực...' : 'Đăng Nhập Quản Trị Viên'}
-            </button>
-
-            <button
-              type="button"
-              onClick={handleQuickLoginAdmin}
-              className="w-full py-2.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-800 font-bold text-xs border border-amber-200 flex items-center justify-center gap-1.5 transition-colors"
-            >
-              <Zap className="w-4 h-4 text-amber-600 fill-amber-500" />
-              <span>⚡ Mở nhanh quyền Admin (Mặc định: admin / admin123)</span>
             </button>
           </div>
         </form>
@@ -575,6 +555,18 @@ export const AdminPanel: React.FC<Props> = ({
         >
           <CheckCircle2 className="w-4 h-4" />
           <span>Toàn Bộ Bài Làm Quiz ({quizHistory.length})</span>
+        </button>
+
+        <button
+          onClick={() => setActiveAdminSubTab('script')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all ${
+            activeAdminSubTab === 'script'
+              ? 'bg-indigo-600 text-white shadow-xs'
+              : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+          }`}
+        >
+          <Code className="w-4 h-4" />
+          <span>Mã GS Chuẩn (Google Apps Script)</span>
         </button>
       </div>
 
@@ -901,7 +893,7 @@ export const AdminPanel: React.FC<Props> = ({
               <tbody className="divide-y divide-slate-100">
                 {filteredAccounts.map((acc) => {
                   const isVisible = visiblePasswords[acc.id];
-                  const displayPw = acc.password || (acc.username === 'admin' ? 'admin123' : 'Chưa đặt');
+                  const displayPw = acc.password || '******';
                   return (
                     <tr key={acc.id} className="hover:bg-slate-50/80 transition-colors">
                       <td className="py-2.5 px-3 font-semibold text-slate-800">
@@ -1057,6 +1049,121 @@ export const AdminPanel: React.FC<Props> = ({
               </table>
             </div>
           )}
+        </div>
+      )}
+
+      {/* ================================================================= */}
+      {/* SUB-TAB 4: MÃ GS CHUẨN ĐỂ ĐƯA VÀO GOOGLE SHEET (CHỈ ADMIN ĐƯỢC XEM) */}
+      {/* ================================================================= */}
+      {activeAdminSubTab === 'script' && (
+        <div className="space-y-6 animate-in fade-in duration-150">
+          <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-sm space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold shadow-xs">
+                  <Code className="w-6 h-6" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-base sm:text-lg font-bold text-slate-900">
+                      Mã Nguồn Google Apps Script (.gs) Chuẩn Hoá
+                    </h3>
+                    <span className="px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 text-[10px] font-bold border border-rose-200">
+                      Chỉ Admin được xem
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Mã nguồn chuẩn đảm bảo Google Sheets hoạt động như một Database duy nhất: Đọc, Ghi, Đổi mật khẩu, Lưu bài thi theo ID
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleCopyCode}
+                  className="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs flex items-center gap-2 shadow-xs transition-colors"
+                >
+                  {copiedCode ? <Check className="w-4 h-4 text-emerald-300" /> : <Copy className="w-4 h-4" />}
+                  <span>{copiedCode ? 'Đã sao chép mã!' : 'Sao chép toàn bộ mã GS'}</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    const blob = new Blob([SAMPLE_APPS_SCRIPT_CODE], { type: 'text/javascript;charset=utf-8;' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'Code.gs';
+                    a.click();
+                    URL.revokeObjectURL(url);
+                    onNotification('Đã tải xuống file Code.gs thành công!');
+                  }}
+                  className="px-3.5 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs border border-slate-200 flex items-center gap-1.5 transition-colors"
+                  title="Tải file Code.gs về máy tính"
+                >
+                  <Download className="w-4 h-4" />
+                  <span className="hidden sm:inline">Tải file Code.gs</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Instruction steps */}
+            <div className="p-4 rounded-2xl bg-amber-50/70 border border-amber-200 space-y-3">
+              <div className="font-bold text-amber-950 text-xs sm:text-sm flex items-center gap-2">
+                <ShieldCheck className="w-4 h-4 text-amber-600 shrink-0" />
+                <span>6 Bước chuẩn triển khai vào Google Sheet (Dành riêng cho Quản trị viên):</span>
+              </div>
+              <ol className="grid grid-cols-1 md:grid-cols-2 gap-2.5 text-xs text-amber-900 pl-1">
+                <li className="flex items-start gap-2 bg-white/60 p-2.5 rounded-xl border border-amber-200/60">
+                  <span className="w-5 h-5 rounded-full bg-amber-200 text-amber-900 font-bold flex items-center justify-center text-[11px] shrink-0">1</span>
+                  <span>Mở Google Sheet của trường &gt; chọn menu <strong>Tiện ích mở rộng</strong> &gt; <strong>Apps Script</strong>.</span>
+                </li>
+                <li className="flex items-start gap-2 bg-white/60 p-2.5 rounded-xl border border-amber-200/60">
+                  <span className="w-5 h-5 rounded-full bg-amber-200 text-amber-900 font-bold flex items-center justify-center text-[11px] shrink-0">2</span>
+                  <span>Xóa toàn bộ mã mặc định trong file <code>Code.gs</code>, nhấn <strong>"Sao chép toàn bộ mã GS"</strong> ở trên và dán vào.</span>
+                </li>
+                <li className="flex items-start gap-2 bg-white/60 p-2.5 rounded-xl border border-amber-200/60">
+                  <span className="w-5 h-5 rounded-full bg-amber-200 text-amber-900 font-bold flex items-center justify-center text-[11px] shrink-0">3</span>
+                  <span>Nhấn nút biểu tượng <strong>Lưu</strong> (đĩa mềm 💾), sau đó nhấn <strong>Triển khai (Deploy)</strong> &gt; <strong>Tùy chọn triển khai mới (New deployment)</strong>.</span>
+                </li>
+                <li className="flex items-start gap-2 bg-white/60 p-2.5 rounded-xl border border-amber-200/60">
+                  <span className="w-5 h-5 rounded-full bg-amber-200 text-amber-900 font-bold flex items-center justify-center text-[11px] shrink-0">4</span>
+                  <span>Chọn loại <strong>"Ứng dụng web" (Web app)</strong>. Thiết lập: Thực thi dưới dạng <strong>"Tôi" (Me)</strong>, Ai có quyền truy cập <strong>"Bất kỳ ai" (Anyone)</strong>.</span>
+                </li>
+                <li className="flex items-start gap-2 bg-white/60 p-2.5 rounded-xl border border-amber-200/60">
+                  <span className="w-5 h-5 rounded-full bg-amber-200 text-amber-900 font-bold flex items-center justify-center text-[11px] shrink-0">5</span>
+                  <span>Bấm <strong>Triển khai</strong>, đăng nhập tài khoản Google của Admin và bấm cấp quyền. Sao chép URL kết thúc bằng <code>/exec</code>.</span>
+                </li>
+                <li className="flex items-start gap-2 bg-white/60 p-2.5 rounded-xl border border-amber-200/60">
+                  <span className="w-5 h-5 rounded-full bg-amber-200 text-amber-900 font-bold flex items-center justify-center text-[11px] shrink-0">6</span>
+                  <span>Quay lại tab <strong>"Vị Trí Lưu Link Google Sheet"</strong> của StudyAI, dán URL vừa sao chép vào và nhấn Lưu.</span>
+                </li>
+              </ol>
+            </div>
+
+            {/* Code Snippet Box */}
+            <div className="rounded-2xl bg-slate-950 border border-slate-800 overflow-hidden shadow-md">
+              <div className="px-4 py-3 bg-slate-900 border-b border-slate-800 flex items-center justify-between text-xs text-slate-400">
+                <div className="flex items-center gap-2 font-mono">
+                  <span className="w-3 h-3 rounded-full bg-rose-500 inline-block" />
+                  <span className="w-3 h-3 rounded-full bg-amber-500 inline-block" />
+                  <span className="w-3 h-3 rounded-full bg-emerald-500 inline-block" />
+                  <span className="ml-2 font-bold text-slate-200">Code.gs (Google Apps Script Engine v2)</span>
+                </div>
+                <button
+                  onClick={handleCopyCode}
+                  className="text-xs text-sky-400 font-bold flex items-center gap-1.5 hover:text-sky-300 transition-colors"
+                >
+                  {copiedCode ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                  <span>{copiedCode ? 'Đã sao chép' : 'Sao chép mã'}</span>
+                </button>
+              </div>
+
+              <pre className="p-4 sm:p-6 overflow-x-auto text-[11px] sm:text-xs text-slate-200 font-mono leading-relaxed max-h-[500px] scrollbar-thin">
+                {SAMPLE_APPS_SCRIPT_CODE}
+              </pre>
+            </div>
+          </div>
         </div>
       )}
 

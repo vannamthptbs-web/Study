@@ -322,6 +322,15 @@ export const QuizModule: React.FC<Props> = ({
             </button>
             <button
               onClick={() => {
+                if (currentUser.isGuest) {
+                  onNotification('Chế độ Soạn đề dành cho Thầy/Cô giáo. Vui lòng đăng nhập tài khoản Giáo viên.');
+                  if (onOpenAuth) onOpenAuth();
+                  return;
+                }
+                if (currentUser.role === 'student') {
+                  onNotification('Chế độ Soạn đề dành cho Thầy/Cô giáo. Học sinh hãy chọn tab "Luyện đề & Bấm giờ" để làm bài nhé! 🎒');
+                  return;
+                }
                 setSubMode('creator');
                 setQuizData(null);
                 setSubmitted(false);
@@ -332,7 +341,7 @@ export const QuizModule: React.FC<Props> = ({
                   : 'bg-white/15 text-white hover:bg-white/25'
               }`}
             >
-              Giáo viên / Tự tạo đề: Soạn đề & Xuất JSON
+              Giáo viên: Soạn đề & Xuất JSON {currentUser.role === 'student' && '(Dành riêng cho GV)'}
             </button>
 
             {bankQuizzes.length > 0 && (
@@ -861,14 +870,14 @@ export const QuizModule: React.FC<Props> = ({
                     <div className="mt-2 inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-[11px] font-bold text-emerald-700">
                       <Sheet className="w-3.5 h-3.5 text-emerald-600" />
                       <span>{syncStatus}</span>
-                      {sheetUrl && (
+                      {currentUser.role === 'admin' && sheetUrl && (
                         <a
                           href={sheetUrl}
                           target="_blank"
                           rel="noreferrer"
                           className="underline text-emerald-800"
                         >
-                          Mở Sheet ➔
+                          Mở Sheet (Admin) ➔
                         </a>
                       )}
                     </div>

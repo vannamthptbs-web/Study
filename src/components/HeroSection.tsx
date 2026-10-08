@@ -249,7 +249,7 @@ export const HeroSection: React.FC<Props> = ({
 
       {/* 4 Chức năng chính */}
       <div>
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
+        <div className="flex items-center justify-between mb-4">
           <div>
             <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
               <Zap className="w-5 h-5 text-indigo-600" />
@@ -259,13 +259,6 @@ export const HeroSection: React.FC<Props> = ({
               Chọn chức năng phù hợp với nhu cầu học tập của em
             </p>
           </div>
-          <button
-            onClick={() => setActiveTab('guide')}
-            className="self-start sm:self-auto inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 text-xs font-bold transition-all hover:scale-102 shadow-2xs"
-          >
-            <span>📖 Sổ tay Hướng dẫn sử dụng</span>
-            <ArrowRight className="w-3.5 h-3.5" />
-          </button>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

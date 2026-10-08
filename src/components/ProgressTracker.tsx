@@ -165,12 +165,12 @@ export const ProgressTracker: React.FC<Props> = ({
           </div>
         </div>
 
-        {/* Google Sheets Sync Banner */}
-        {sheetUrl && (
+        {/* Google Sheets Sync Banner (Chỉ Admin mới xem được) */}
+        {profile.role === 'admin' && sheetUrl && (
           <div className="mt-5 pt-4 border-t border-white/10 flex flex-wrap items-center justify-between gap-3 text-xs">
             <div className="flex items-center gap-2 text-emerald-300">
               <Sheet className="w-4 h-4" />
-              <span>Dữ liệu điểm số và tài khoản đã được đồng bộ trực tiếp với Google Sheets của bạn.</span>
+              <span>Dữ liệu điểm số và tài khoản đã được đồng bộ trực tiếp với Google Sheets quản trị.</span>
             </div>
             <a
               href={sheetUrl}
@@ -178,7 +178,7 @@ export const ProgressTracker: React.FC<Props> = ({
               rel="noreferrer"
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-xs shadow-xs transition-colors"
             >
-              <span>Mở bảng điểm Google Sheets</span>
+              <span>Mở bảng tính Google Sheets (Admin)</span>
               <ExternalLink className="w-3.5 h-3.5" />
             </a>
           </div>

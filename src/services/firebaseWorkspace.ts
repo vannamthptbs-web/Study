@@ -914,6 +914,16 @@ export const autoSyncBankQuiz = async (quiz: any): Promise<void> => {
   }
 };
 
+// 5. Tự động xóa đề thi khỏi ngân hàng đề thi
+export const autoDeleteBankQuiz = async (quizId: string): Promise<void> => {
+  try {
+    recordAutoSyncTime();
+    sendToAppsScriptWebhook('delete_bank_quiz', { id: quizId });
+  } catch (e) {
+    console.warn('Auto-delete bank quiz error:', e);
+  }
+};
+
 // Sample Google Apps Script Code template for Admin (Hỗ trợ Đọc -> Ghi -> Sửa theo ID duy nhất)
 export const SAMPLE_APPS_SCRIPT_CODE = `/**
  * =========================================================================
@@ -1133,7 +1143,20 @@ function handleRequest(data) {
       return ContentService.createTextOutput(JSON.stringify({ status: "success" })).setMimeType(ContentService.MimeType.JSON);
     }
 
-    // 9. LƯU LỖ HỔNG KIẾN THỨC
+    // 9. XÓA ĐỀ THI KHỎI NGÂN HÀNG THEO MÃ ID
+    if (action === "delete_bank_quiz" || action === "delete_bank") {
+      var sheet = ss.getSheetByName("NganHangDeThi");
+      if (sheet) {
+        var rowIdx = findRowIndexByIdOrEmail(sheet, payload.id);
+        if (rowIdx > 0) {
+          sheet.deleteRow(rowIdx);
+          return ContentService.createTextOutput(JSON.stringify({ status: "success", deletedRow: rowIdx })).setMimeType(ContentService.MimeType.JSON);
+        }
+      }
+      return ContentService.createTextOutput(JSON.stringify({ status: "success" })).setMimeType(ContentService.MimeType.JSON);
+    }
+
+    // 10. LƯU LỖ HỔNG KIẾN THỨC
     if (action === "sync_weak_topic") {
       var sheet = getOrCreateFormattedSheet(ss, "LoHongKienThuc", [
         "Mã Lỗ Hổng", "User ID / Email", "Môn Học", "Tên Chuyên Đề Bị Sai",

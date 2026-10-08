@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Calculator, BookOpen, ChevronDown, ChevronUp } from 'lucide-react';
-import { QUICK_MATH_SYMBOLS } from '../utils/mathUtils';
+import { Calculator, BookOpen, ChevronDown, ChevronUp, Atom, FlaskConical, Dna } from 'lucide-react';
+import { QUICK_SYMBOLS_BY_CATEGORY } from '../utils/mathUtils';
 import { FormulaReferenceModal } from './FormulaReferenceModal';
 
 interface Props {
@@ -16,23 +16,27 @@ export const FormulaToolbar: React.FC<Props> = ({
 }) => {
   const [modalOpen, setModalOpen] = useState(false);
   const [expanded, setExpanded] = useState(!compact);
+  const [selectedCategory, setSelectedCategory] = useState<string>('Toán học');
+
+  const categories = Object.keys(QUICK_SYMBOLS_BY_CATEGORY);
+  const currentSymbols = QUICK_SYMBOLS_BY_CATEGORY[selectedCategory] || QUICK_SYMBOLS_BY_CATEGORY['Toán học'];
 
   return (
-    <div className={`space-y-1.5 ${className}`}>
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-600">
+    <div className={`space-y-2 ${className}`}>
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-700">
           <Calculator className="w-3.5 h-3.5 text-indigo-600" />
-          <span>Ký hiệu & Cấu trúc công thức chuẩn:</span>
+          <span>Ký hiệu & Công thức chuẩn hóa (Toán & KHTN):</span>
         </div>
 
         <div className="flex items-center gap-2">
           <button
             type="button"
             onClick={() => setModalOpen(true)}
-            className="flex items-center gap-1 text-[11px] font-bold text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 px-2.5 py-1 rounded-lg border border-indigo-200 transition-colors"
+            className="flex items-center gap-1 text-[11px] font-bold text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 px-2.5 py-1 rounded-lg border border-indigo-200 transition-colors shadow-2xs"
           >
             <BookOpen className="w-3 h-3" />
-            <span>Cẩm nang công thức</span>
+            <span>Cẩm nang công thức Toán & KHTN</span>
           </button>
 
           {compact && (
@@ -49,18 +53,39 @@ export const FormulaToolbar: React.FC<Props> = ({
       </div>
 
       {expanded && (
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1.5 pt-0.5 scrollbar-thin text-xs">
-          {QUICK_MATH_SYMBOLS.map((item, idx) => (
-            <button
-              key={idx}
-              type="button"
-              onClick={() => onInsertSymbol(item.insert)}
-              title={item.title}
-              className="px-2 py-1 rounded-lg bg-slate-100 hover:bg-indigo-100 hover:text-indigo-700 text-slate-700 font-mono text-xs border border-slate-200/80 transition-colors whitespace-nowrap shrink-0 active:scale-95 shadow-2xs"
-            >
-              {item.label}
-            </button>
-          ))}
+        <div className="space-y-1.5 bg-slate-50/70 p-2 rounded-xl border border-slate-200/70">
+          {/* Sub-category selector */}
+          <div className="flex items-center gap-1 overflow-x-auto pb-1 scrollbar-thin text-[11px]">
+            {categories.map((cat) => (
+              <button
+                key={cat}
+                type="button"
+                onClick={() => setSelectedCategory(cat)}
+                className={`px-2 py-0.5 rounded-md font-semibold whitespace-nowrap transition-all ${
+                  selectedCategory === cat
+                    ? 'bg-indigo-600 text-white shadow-2xs'
+                    : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200/80'
+                }`}
+              >
+                {cat}
+              </button>
+            ))}
+          </div>
+
+          {/* Symbols row */}
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 pt-0.5 scrollbar-thin text-xs">
+            {currentSymbols.map((item, idx) => (
+              <button
+                key={idx}
+                type="button"
+                onClick={() => onInsertSymbol(item.insert)}
+                title={item.title}
+                className="px-2 py-1 rounded-lg bg-white hover:bg-indigo-50 hover:text-indigo-700 hover:border-indigo-300 text-slate-800 font-mono text-xs border border-slate-200 transition-all whitespace-nowrap shrink-0 active:scale-95 shadow-2xs font-semibold"
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
         </div>
       )}
 

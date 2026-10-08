@@ -32,7 +32,14 @@ export const FormulaReferenceModal: React.FC<Props> = ({
 
   if (!isOpen) return null;
 
-  const categories = ['Tất cả', 'Toán học', 'Tiếng Việt', 'Khoa học', 'Ký hiệu & Đơn vị'];
+  const categories = [
+    'Tất cả',
+    'Toán học',
+    'KHTN - Vật lý',
+    'KHTN - Hóa học',
+    'KHTN - Sinh học',
+    'Ký hiệu & Đơn vị',
+  ];
 
   const filteredFormulas = STANDARD_FORMULAS.filter((f) => {
     const matchesCat =
@@ -69,9 +76,9 @@ export const FormulaReferenceModal: React.FC<Props> = ({
               <Calculator className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-lg font-bold">Cẩm nang Công thức & Quy tắc Tiểu học</h3>
+              <h3 className="text-lg font-bold">Cẩm nang Chuẩn hóa Công thức Toán & KHTN</h3>
               <p className="text-xs text-slate-300">
-                Toán học, Tiếng Việt, Khoa học & Đơn vị đo lường chuẩn SGK Tiểu học (Lớp 1 - 5)
+                Tra cứu và chèn công thức chuẩn LaTeX môn Toán, KHTN (Vật lý, Hóa học, Sinh học)
               </p>
             </div>
           </div>

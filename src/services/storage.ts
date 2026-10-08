@@ -12,6 +12,7 @@ import {
 import {
   autoSyncUser,
   autoSyncBankQuiz,
+  autoDeleteBankQuiz,
   updateSheetPassword,
   sendToAppsScriptWebhook,
   fetchSheetData,
@@ -568,12 +569,33 @@ export function getBankQuizzes(): SavedBankQuiz[] {
     const raw = localStorage.getItem(BANK_QUIZZES_KEY);
     const list: SavedBankQuiz[] = raw ? JSON.parse(raw) : [];
     const seen = new Set<string>();
-    return list.filter((b) => {
-      if (!b || !b.id) return false;
-      if (seen.has(b.id)) return false;
-      seen.add(b.id);
-      return true;
-    });
+    return list
+      .filter((b) => {
+        if (!b || !b.id) return false;
+        if (seen.has(b.id)) return false;
+        seen.add(b.id);
+        return true;
+      })
+      .map((b: any) => {
+        // Đảm bảo b.data luôn là object hợp lệ, không bao giờ undefined
+        if (!b.data && b.dataJson) {
+          try {
+            b.data = typeof b.dataJson === 'string' ? JSON.parse(b.dataJson) : b.dataJson;
+          } catch {
+            b.data = { title: b.title || '', topic: b.topic || '', questions: [] };
+          }
+        }
+        if (!b.data || typeof b.data !== 'object') {
+          b.data = { title: b.title || '', topic: b.topic || '', questions: [] };
+        }
+        if (!Array.isArray(b.data.questions)) {
+          b.data.questions = [];
+        }
+        if (!Array.isArray(b.data.essayQuestions)) {
+          b.data.essayQuestions = [];
+        }
+        return b as SavedBankQuiz;
+      });
   } catch {
     return [];
   }
@@ -588,11 +610,133 @@ export function saveBankQuiz(quiz: SavedBankQuiz): void {
     } else {
       list.unshift(quiz);
     }
-    localStorage.setItem(BANK_QUIZZES_KEY, JSON.stringify(list.slice(0, 30)));
+    localStorage.setItem(BANK_QUIZZES_KEY, JSON.stringify(list.slice(0, 100)));
     // Tự động lưu trực tiếp vào Google Sheets
     autoSyncBankQuiz(quiz).catch(() => {});
   } catch (e) {
     console.error('Lỗi lưu ngân hàng quiz:', e);
+  }
+}
+
+export function updateBankQuiz(quiz: SavedBankQuiz): void {
+  saveBankQuiz(quiz);
+}
+
+export function deleteBankQuiz(quizId: string): boolean {
+  try {
+    const list = getBankQuizzes();
+    const updated = list.filter((b) => b.id !== quizId);
+    localStorage.setItem(BANK_QUIZZES_KEY, JSON.stringify(updated));
+    // Tự động đồng bộ xóa trên Google Sheets
+    autoDeleteBankQuiz(quizId).catch(() => {});
+    return true;
+  } catch (e) {
+    console.error('Lỗi xóa đề thi trong ngân hàng:', e);
+    return false;
+  }
+}
+
+export function deleteQuestionFromBankQuiz(
+  quizId: string,
+  questionIndex: number
+): SavedBankQuiz | null {
+  try {
+    const list = getBankQuizzes();
+    const quiz = list.find((b) => b.id === quizId);
+    if (!quiz || !quiz.data) return null;
+
+    if (quiz.examFormat === 'essay' || (quiz.data.essayQuestions && quiz.data.essayQuestions.length > 0)) {
+      if (Array.isArray(quiz.data.essayQuestions)) {
+        quiz.data.essayQuestions.splice(questionIndex, 1);
+        quiz.data.essayQuestions.forEach((q, idx) => {
+          q.id = idx + 1;
+        });
+      }
+    } else {
+      if (Array.isArray(quiz.data.questions)) {
+        quiz.data.questions.splice(questionIndex, 1);
+        quiz.data.questions.forEach((q, idx) => {
+          q.id = idx + 1;
+        });
+      }
+    }
+
+    saveBankQuiz(quiz);
+    return quiz;
+  } catch (e) {
+    console.error('Lỗi xóa câu hỏi trong ngân hàng:', e);
+    return null;
+  }
+}
+
+export function updateQuestionInBankQuiz(
+  quizId: string,
+  questionIndex: number,
+  updatedQuestion: any
+): SavedBankQuiz | null {
+  try {
+    const list = getBankQuizzes();
+    const quiz = list.find((b) => b.id === quizId);
+    if (!quiz || !quiz.data) return null;
+
+    if (quiz.examFormat === 'essay' || (quiz.data.essayQuestions && quiz.data.essayQuestions.length > 0)) {
+      if (Array.isArray(quiz.data.essayQuestions) && quiz.data.essayQuestions[questionIndex]) {
+        quiz.data.essayQuestions[questionIndex] = {
+          ...quiz.data.essayQuestions[questionIndex],
+          ...updatedQuestion,
+          id: questionIndex + 1,
+        };
+      }
+    } else {
+      if (Array.isArray(quiz.data.questions) && quiz.data.questions[questionIndex]) {
+        quiz.data.questions[questionIndex] = {
+          ...quiz.data.questions[questionIndex],
+          ...updatedQuestion,
+          id: questionIndex + 1,
+        };
+      }
+    }
+
+    saveBankQuiz(quiz);
+    return quiz;
+  } catch (e) {
+    console.error('Lỗi cập nhật câu hỏi trong ngân hàng:', e);
+    return null;
+  }
+}
+
+export function addQuestionToBankQuiz(
+  quizId: string,
+  newQuestion: any
+): SavedBankQuiz | null {
+  try {
+    const list = getBankQuizzes();
+    const quiz = list.find((b) => b.id === quizId);
+    if (!quiz || !quiz.data) return null;
+
+    if (quiz.examFormat === 'essay' || (quiz.data.essayQuestions && quiz.data.essayQuestions.length > 0)) {
+      if (!Array.isArray(quiz.data.essayQuestions)) {
+        quiz.data.essayQuestions = [];
+      }
+      quiz.data.essayQuestions.push({
+        ...newQuestion,
+        id: quiz.data.essayQuestions.length + 1,
+      });
+    } else {
+      if (!Array.isArray(quiz.data.questions)) {
+        quiz.data.questions = [];
+      }
+      quiz.data.questions.push({
+        ...newQuestion,
+        id: quiz.data.questions.length + 1,
+      });
+    }
+
+    saveBankQuiz(quiz);
+    return quiz;
+  } catch (e) {
+    console.error('Lỗi thêm câu hỏi vào ngân hàng:', e);
+    return null;
   }
 }
 
@@ -673,15 +817,35 @@ export async function loadDataFromGoogleSheets(): Promise<boolean> {
       localStorage.setItem(QUIZ_HISTORY_KEY, JSON.stringify(cleanQuizzes));
     }
 
-    // 3. Đồng bộ ngân hàng đề thi (khử trùng lặp id)
+    // 3. Đồng bộ ngân hàng đề thi (khử trùng lặp id và đảm bảo cấu trúc data an toàn)
     if (Array.isArray(data.bankQuizzes) && data.bankQuizzes.length > 0) {
       const seenBankIds = new Set<string>();
-      const cleanBankQuizzes = data.bankQuizzes.filter((b) => {
-        if (!b || !b.id) return false;
-        if (seenBankIds.has(b.id)) return false;
-        seenBankIds.add(b.id);
-        return true;
-      });
+      const cleanBankQuizzes = data.bankQuizzes
+        .filter((b) => {
+          if (!b || !b.id) return false;
+          if (seenBankIds.has(b.id)) return false;
+          seenBankIds.add(b.id);
+          return true;
+        })
+        .map((b: any) => {
+          if (!b.data && b.dataJson) {
+            try {
+              b.data = typeof b.dataJson === 'string' ? JSON.parse(b.dataJson) : b.dataJson;
+            } catch {
+              b.data = { title: b.title || '', topic: b.topic || '', questions: [] };
+            }
+          }
+          if (!b.data || typeof b.data !== 'object') {
+            b.data = { title: b.title || '', topic: b.topic || '', questions: [] };
+          }
+          if (!Array.isArray(b.data.questions)) {
+            b.data.questions = [];
+          }
+          if (!Array.isArray(b.data.essayQuestions)) {
+            b.data.essayQuestions = [];
+          }
+          return b;
+        });
       localStorage.setItem(BANK_QUIZZES_KEY, JSON.stringify(cleanBankQuizzes));
     }
 

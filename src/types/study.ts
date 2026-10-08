@@ -3,13 +3,25 @@ export type Grade =
   | 'Lớp 2'
   | 'Lớp 3'
   | 'Lớp 4'
-  | 'Lớp 5';
+  | 'Lớp 5'
+  | 'Lớp 6'
+  | 'Lớp 7'
+  | 'Lớp 8'
+  | 'Lớp 9'
+  | 'Lớp 10'
+  | 'Lớp 11'
+  | 'Lớp 12';
 
 export type Subject =
   | 'Toán'
-  | 'Tiếng Việt'
-  | 'Tiếng Anh'
+  | 'KHTN'
   | 'Khoa học'
+  | 'Vật lý'
+  | 'Hóa học'
+  | 'Sinh học'
+  | 'Tiếng Việt'
+  | 'Ngữ văn'
+  | 'Tiếng Anh'
   | 'Lịch sử & Địa lý'
   | 'Tin học'
   | 'Đạo đức';

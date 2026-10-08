@@ -256,7 +256,7 @@ export const QuizModule: React.FC<Props> = ({
     }
   };
 
-  const currentQ: QuizQuestion | undefined = quizData?.questions[currentQuestionIndex];
+  const currentQ: QuizQuestion | undefined = quizData?.questions?.[currentQuestionIndex];
 
   const getChoiceLetter = (optStr: string, idx: number) => {
     const letters = ['A', 'B', 'C', 'D'];
@@ -470,27 +470,41 @@ export const QuizModule: React.FC<Props> = ({
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 pt-1">
             {bankQuizzes.slice(0, 9).map((item, bIdx) => {
+              const quizDataObj =
+                item?.data ||
+                ((item as any)?.dataJson
+                  ? (() => {
+                      try {
+                        return typeof (item as any).dataJson === 'string'
+                          ? JSON.parse((item as any).dataJson)
+                          : (item as any).dataJson;
+                      } catch {
+                        return null;
+                      }
+                    })()
+                  : null);
               const isEssay =
-                item.examFormat === 'essay' ||
-                (item.data && Array.isArray(item.data.essayQuestions) && item.data.essayQuestions.length > 0);
+                item?.examFormat === 'essay' ||
+                (quizDataObj && Array.isArray(quizDataObj.essayQuestions) && quizDataObj.essayQuestions.length > 0) ||
+                (item?.data && Array.isArray(item.data.essayQuestions) && item.data.essayQuestions.length > 0);
               const questionCountNum = isEssay
-                ? item.data.essayQuestions?.length || 0
-                : item.data.questions?.length || 0;
+                ? quizDataObj?.essayQuestions?.length || item?.data?.essayQuestions?.length || 0
+                : quizDataObj?.questions?.length || item?.data?.questions?.length || 0;
 
               return (
                 <div
-                  key={item.id ? `${item.id}-${bIdx}` : `bank-${bIdx}`}
+                  key={item?.id ? `${item.id}-${bIdx}` : `bank-${bIdx}`}
                   className="p-3 rounded-xl bg-white border border-slate-200 text-left hover:border-emerald-400 text-xs transition-all shadow-2xs space-y-2"
                 >
                   <div className="flex items-center justify-between text-[10px] text-slate-400">
                     <span className="font-semibold text-emerald-700">
-                      {item.subject} • {item.grade}
+                      {item?.subject || selectedSubject} • {item?.grade || selectedGrade}
                     </span>
                     <span className={`px-1.5 py-0.2 rounded font-bold ${isEssay ? 'bg-amber-100 text-amber-800' : 'bg-sky-100 text-sky-800'}`}>
                       {isEssay ? 'Tự luận' : 'Trắc nghiệm'}
                     </span>
                   </div>
-                  <h5 className="font-bold text-slate-900 line-clamp-2">{item.title}</h5>
+                  <h5 className="font-bold text-slate-900 line-clamp-2">{item?.title || 'Đề thi đã lưu'}</h5>
                   <div className="flex items-center justify-between pt-1">
                     <span className="text-[11px] text-slate-500">
                       {questionCountNum} câu
@@ -501,11 +515,16 @@ export const QuizModule: React.FC<Props> = ({
                         if (isEssay) {
                           setExamFormat('essay');
                         } else {
-                          setExamFormat('multiple_choice');
-                          setQuizData(item.data);
-                          setSubmitted(false);
-                          setCurrentQuestionIndex(0);
-                          setSelectedAnswers({});
+                          const targetData = item?.data || quizDataObj;
+                          if (targetData && Array.isArray(targetData.questions) && targetData.questions.length > 0) {
+                            setExamFormat('multiple_choice');
+                            setQuizData(targetData);
+                            setSubmitted(false);
+                            setCurrentQuestionIndex(0);
+                            setSelectedAnswers({});
+                          } else {
+                            onNotification('Đề thi này không có danh sách câu hỏi trắc nghiệm hợp lệ!');
+                          }
                         }
                         setShowBank(false);
                       }}
@@ -660,7 +679,7 @@ export const QuizModule: React.FC<Props> = ({
       )}
 
       {/* ACTIVE QUIZ VIEW */}
-      {quizData && currentQ && (
+      {quizData && Array.isArray(quizData.questions) && quizData.questions.length > 0 && currentQ && (
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
           {/* Top Status Bar: Timer & Actions */}
           <div className="px-5 py-3.5 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3">
@@ -669,7 +688,7 @@ export const QuizModule: React.FC<Props> = ({
                 {quizData.title || `Trắc nghiệm: ${quizData.topic}`}
               </h3>
               <p className="text-[11px] text-slate-500">
-                {selectedSubject} • {selectedGrade} • {quizData.questions.length} câu hỏi
+                {selectedSubject} • {selectedGrade} • {quizData.questions?.length || 0} câu hỏi
               </p>
             </div>
 
@@ -752,7 +771,7 @@ export const QuizModule: React.FC<Props> = ({
             <div>
               <div className="flex items-center justify-between mb-2">
                 <span className="text-xs font-bold text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-full">
-                  Câu hỏi {currentQuestionIndex + 1}/{quizData.questions.length}
+                  Câu hỏi {currentQuestionIndex + 1}/{quizData.questions?.length || 1}
                 </span>
                 {currentQ.subtopic && (
                   <span className="text-xs text-slate-500 font-medium">
@@ -863,10 +882,10 @@ export const QuizModule: React.FC<Props> = ({
               </button>
 
               <div className="text-xs text-slate-400 font-medium">
-                Đã làm: {Object.keys(selectedAnswers).length}/{quizData.questions.length} câu
+                Đã làm: {Object.keys(selectedAnswers).length}/{quizData.questions?.length || 0} câu
               </div>
 
-              {currentQuestionIndex < quizData.questions.length - 1 ? (
+              {currentQuestionIndex < (quizData.questions?.length || 0) - 1 ? (
                 <button
                   type="button"
                   onClick={() => setCurrentQuestionIndex((prev) => prev + 1)}

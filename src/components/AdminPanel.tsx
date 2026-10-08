@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   ShieldCheck,
   Sheet,
@@ -57,6 +57,7 @@ import {
 } from '../services/firebaseWorkspace';
 import {
   getStoredAccounts,
+  deduplicateAccounts,
   getAllQuizHistory,
   getBankQuizzes,
   getStoredWeakTopics,
@@ -429,15 +430,18 @@ export const AdminPanel: React.FC<Props> = ({
     onNotification('Đã tải xuống file CSV kết quả bài làm Quiz thành công!');
   };
 
-  const filteredAccounts = accounts.filter((acc) => {
-    const matchesRole = roleFilter === 'all' || acc.role === roleFilter;
-    const matchesSearch =
-      acc.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      acc.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (acc.username && acc.username.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      (acc.school && acc.school.toLowerCase().includes(searchTerm.toLowerCase()));
-    return matchesRole && matchesSearch;
-  });
+  const filteredAccounts = useMemo(() => {
+    const cleanAccounts = deduplicateAccounts(accounts);
+    return cleanAccounts.filter((acc) => {
+      const matchesRole = roleFilter === 'all' || acc.role === roleFilter;
+      const matchesSearch =
+        acc.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        acc.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (acc.username && acc.username.toLowerCase().includes(searchTerm.toLowerCase())) ||
+        (acc.school && acc.school.toLowerCase().includes(searchTerm.toLowerCase()));
+      return matchesRole && matchesSearch;
+    });
+  }, [accounts, roleFilter, searchTerm]);
 
   // =========================================================================
   // ACCESS GATE: If current user is not admin, show interactive admin login!
@@ -940,11 +944,11 @@ export const AdminPanel: React.FC<Props> = ({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {filteredAccounts.map((acc) => {
+                {filteredAccounts.map((acc, index) => {
                   const isVisible = visiblePasswords[acc.id];
                   const displayPw = acc.password || '******';
                   return (
-                    <tr key={acc.id} className="hover:bg-slate-50/80 transition-colors">
+                    <tr key={acc.id ? `${acc.id}-${index}` : `acc-${index}`} className="hover:bg-slate-50/80 transition-colors">
                       <td className="py-2.5 px-3 font-semibold text-slate-800">
                         <div className="flex items-center gap-1.5">
                           <span>{acc.name}</span>
@@ -1070,8 +1074,8 @@ export const AdminPanel: React.FC<Props> = ({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {quizHistory.map((q) => (
-                    <tr key={q.id} className="hover:bg-slate-50/60">
+                  {quizHistory.map((q, index) => (
+                    <tr key={q.id ? `${q.id}-${index}` : `quiz-${index}`} className="hover:bg-slate-50/60">
                       <td className="py-2 px-3 text-slate-400 whitespace-nowrap">
                         {new Date(q.timestamp).toLocaleString('vi-VN')}
                       </td>

@@ -285,11 +285,11 @@ export const ProgressTracker: React.FC<Props> = ({
           </div>
         ) : (
           <div className="space-y-3">
-            {weakTopics.map((item) => {
+            {weakTopics.map((item, idx) => {
               const isMastered = item.status === 'mastered';
               return (
                 <div
-                  key={item.id}
+                  key={item.id ? `${item.id}-${idx}` : `wt-${idx}`}
                   className={`p-4 rounded-xl border transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
                     isMastered
                       ? 'bg-slate-50/60 border-slate-200 opacity-60'
@@ -379,8 +379,8 @@ export const ProgressTracker: React.FC<Props> = ({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {quizHistory.slice(0, 15).map((res) => (
-                  <tr key={res.id} className="hover:bg-slate-50/60">
+                {quizHistory.slice(0, 15).map((res, idx) => (
+                  <tr key={res.id ? `${res.id}-${idx}` : `res-${idx}`} className="hover:bg-slate-50/60">
                     <td className="py-2.5 px-3 text-slate-500">
                       {new Date(res.timestamp).toLocaleDateString('vi-VN')}
                     </td>

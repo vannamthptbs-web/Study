@@ -7,6 +7,7 @@ import {
   Subject,
   AppUser,
   SavedBankQuiz,
+  UserRole,
 } from '../types/study';
 import {
   autoSyncUser,
@@ -75,21 +76,74 @@ export const GUEST_PROFILE: UserProfile = {
 // Nguyên tắc 1: Xóa toàn bộ dữ liệu mẫu, dữ liệu tự động tạo, dữ liệu hard-code
 const DEFAULT_WEAK_TOPICS: WeakTopicItem[] = [];
 
-// Helper to get all registered accounts (ensuring admin exists)
+// Helper deduplicate accounts by id, username, or email to prevent duplicate key bugs
+export function deduplicateAccounts(list: AppUser[]): AppUser[] {
+  const result: AppUser[] = [];
+
+  for (const acc of list) {
+    if (!acc) continue;
+    const cleanId = (acc.id || '').trim();
+    const cleanUsername = (acc.username || '').trim().toLowerCase();
+    const cleanEmail = (acc.email || '').trim().toLowerCase();
+
+    // Check if duplicate exists in accumulator
+    const existingIdx = result.findIndex((x) => {
+      const xId = (x.id || '').trim();
+      const xUsername = (x.username || '').trim().toLowerCase();
+      const xEmail = (x.email || '').trim().toLowerCase();
+
+      return (
+        (cleanId && xId === cleanId) ||
+        (cleanUsername && xUsername === cleanUsername) ||
+        (cleanEmail && xEmail === cleanEmail)
+      );
+    });
+
+    if (existingIdx !== -1) {
+      // Merge newer/richer info into the existing entry
+      const existing = result[existingIdx];
+      result[existingIdx] = {
+        ...existing,
+        ...acc,
+        id: existing.id || acc.id,
+        username: existing.username || acc.username,
+        email: existing.email || acc.email,
+        name: acc.name && acc.name !== 'Thành viên' ? acc.name : existing.name,
+        password: acc.password || existing.password || '',
+        role: existing.role === 'admin' || acc.role === 'admin' ? 'admin' : (acc.role || existing.role),
+        grade: acc.grade || existing.grade,
+        subject: acc.subject || existing.subject,
+        school: acc.school || existing.school,
+        createdAt: existing.createdAt || acc.createdAt || Date.now(),
+      };
+    } else {
+      result.push({ ...acc });
+    }
+  }
+
+  return result;
+}
+
+// Helper to get all registered accounts (ensuring admin exists and deduplicated)
 export function getStoredAccounts(): AppUser[] {
   try {
     const raw = localStorage.getItem(REGISTERED_ACCOUNTS_KEY);
     const list: AppUser[] = raw ? JSON.parse(raw) : [];
+    const deduped = deduplicateAccounts(list);
 
     // Ensure default admin account exists
-    const adminIndex = list.findIndex(
+    const adminIndex = deduped.findIndex(
       (a) => a.username?.toLowerCase() === 'admin' || a.email?.toLowerCase() === 'admin@studyai.edu.vn'
     );
     if (adminIndex === -1) {
-      list.unshift(DEFAULT_ADMIN_ACCOUNT);
-      localStorage.setItem(REGISTERED_ACCOUNTS_KEY, JSON.stringify(list));
+      deduped.unshift(DEFAULT_ADMIN_ACCOUNT);
     }
-    return list;
+
+    // If cleaned list is different from raw list length or raw was empty, persist cleaned version
+    if (deduped.length !== list.length || !raw) {
+      localStorage.setItem(REGISTERED_ACCOUNTS_KEY, JSON.stringify(deduped));
+    }
+    return deduped;
   } catch {
     return [DEFAULT_ADMIN_ACCOUNT];
   }
@@ -109,7 +163,8 @@ export function saveAccountRecord(account: AppUser): void {
     } else {
       list.unshift(account);
     }
-    localStorage.setItem(REGISTERED_ACCOUNTS_KEY, JSON.stringify(list));
+    const cleanList = deduplicateAccounts(list);
+    localStorage.setItem(REGISTERED_ACCOUNTS_KEY, JSON.stringify(cleanList));
     // Tự động ghi trực tiếp vào Google Sheets
     autoSyncUser(account).catch(() => {});
   } catch (e) {
@@ -349,7 +404,14 @@ export function getStoredQuizHistory(filterUserId?: string): QuizSubmissionResul
 export function getAllQuizHistory(): QuizSubmissionResult[] {
   try {
     const raw = localStorage.getItem(QUIZ_HISTORY_KEY);
-    return raw ? JSON.parse(raw) : [];
+    const list: QuizSubmissionResult[] = raw ? JSON.parse(raw) : [];
+    const seen = new Set<string>();
+    return list.filter((q) => {
+      if (!q || !q.id) return false;
+      if (seen.has(q.id)) return false;
+      seen.add(q.id);
+      return true;
+    });
   } catch {
     return [];
   }
@@ -504,7 +566,14 @@ export function saveReviewItem(item: SavedItem, userId?: string): void {
 export function getBankQuizzes(): SavedBankQuiz[] {
   try {
     const raw = localStorage.getItem(BANK_QUIZZES_KEY);
-    return raw ? JSON.parse(raw) : [];
+    const list: SavedBankQuiz[] = raw ? JSON.parse(raw) : [];
+    const seen = new Set<string>();
+    return list.filter((b) => {
+      if (!b || !b.id) return false;
+      if (seen.has(b.id)) return false;
+      seen.add(b.id);
+      return true;
+    });
   } catch {
     return [];
   }
@@ -539,33 +608,81 @@ export async function loadDataFromGoogleSheets(): Promise<boolean> {
     // 1. Đồng bộ tài khoản
     if (Array.isArray(data.accounts) && data.accounts.length > 0) {
       const currentList = getStoredAccounts();
-      const mergedList: AppUser[] = [...data.accounts];
+      const mergedList: AppUser[] = [];
 
-      // Bảo toàn mật khẩu cho các tài khoản hợp lệ
-      mergedList.forEach((acc) => {
-        if (!acc.password) {
-          const matched = currentList.find(
-            (c) => c.id === acc.id || (acc.username && c.username?.toLowerCase() === acc.username.toLowerCase())
-          );
-          if (matched?.password) acc.password = matched.password;
+      for (const item of data.accounts) {
+        if (!item || (!item.id && !item.email && !item.username)) continue;
+        
+        const cleanEmail = (item.email || '').trim().toLowerCase();
+        const cleanUsername = (item.username || (cleanEmail ? cleanEmail.split('@')[0] : '')).trim().toLowerCase();
+        const cleanId = item.id || `user-${cleanUsername || Date.now()}`;
+
+        // Tìm tài khoản đối ứng trong máy hiện tại
+        const matched = currentList.find(
+          (c) =>
+            (item.id && c.id === item.id) ||
+            (cleanUsername && c.username?.toLowerCase() === cleanUsername) ||
+            (cleanEmail && c.email?.toLowerCase() === cleanEmail)
+        );
+
+        // Mật khẩu lấy từ Google Sheet (nếu có), fallback sang mật khẩu đã lưu ở máy
+        const finalPassword = (item.password && String(item.password).trim().length > 0)
+          ? String(item.password).trim()
+          : (matched?.password || (cleanUsername === 'admin' ? 'admin123' : ''));
+
+        // Chuẩn hóa vai trò
+        let userRole: UserRole = 'student';
+        const roleStr = String(item.role || '').toLowerCase();
+        if (roleStr.includes('admin') || roleStr.includes('quản trị')) {
+          userRole = 'admin';
+        } else if (roleStr.includes('teacher') || roleStr.includes('giáo viên') || roleStr.includes('gv')) {
+          userRole = 'teacher';
         }
-      });
 
-      // Luôn đảm bảo tài khoản admin gốc tồn tại
-      if (!mergedList.some((a) => a.username?.toLowerCase() === 'admin')) {
-        mergedList.unshift(DEFAULT_ADMIN_ACCOUNT);
+        mergedList.push({
+          id: cleanId,
+          username: cleanUsername || 'user',
+          email: cleanEmail,
+          password: finalPassword,
+          name: item.name || matched?.name || (cleanUsername === 'admin' ? 'Ban Quản Trị Hệ Thống' : 'Thành viên'),
+          role: userRole,
+          grade: (item.grade as Grade) || matched?.grade || 'Lớp 4',
+          subject: (item.subject as Subject) || matched?.subject,
+          school: item.school || matched?.school || 'Trường Tiểu học',
+          createdAt: typeof item.createdAt === 'number' && item.createdAt > 0 ? item.createdAt : (matched?.createdAt || Date.now()),
+        });
       }
-      localStorage.setItem(REGISTERED_ACCOUNTS_KEY, JSON.stringify(mergedList));
+
+      // Luôn làm sạch dữ liệu trùng lặp và đảm bảo tài khoản admin gốc tồn tại
+      const cleanMergedAccounts = deduplicateAccounts(mergedList);
+      if (!cleanMergedAccounts.some((a) => a.username?.toLowerCase() === 'admin' || a.email?.toLowerCase() === 'admin@studyai.edu.vn')) {
+        cleanMergedAccounts.unshift(DEFAULT_ADMIN_ACCOUNT);
+      }
+      localStorage.setItem(REGISTERED_ACCOUNTS_KEY, JSON.stringify(cleanMergedAccounts));
     }
 
-    // 2. Đồng bộ lịch sử bài thi
+    // 2. Đồng bộ lịch sử bài thi (khử trùng lặp id)
     if (Array.isArray(data.quizzes) && data.quizzes.length > 0) {
-      localStorage.setItem(QUIZ_HISTORY_KEY, JSON.stringify(data.quizzes));
+      const seenQuizIds = new Set<string>();
+      const cleanQuizzes = data.quizzes.filter((q) => {
+        if (!q || !q.id) return false;
+        if (seenQuizIds.has(q.id)) return false;
+        seenQuizIds.add(q.id);
+        return true;
+      });
+      localStorage.setItem(QUIZ_HISTORY_KEY, JSON.stringify(cleanQuizzes));
     }
 
-    // 3. Đồng bộ ngân hàng đề thi
+    // 3. Đồng bộ ngân hàng đề thi (khử trùng lặp id)
     if (Array.isArray(data.bankQuizzes) && data.bankQuizzes.length > 0) {
-      localStorage.setItem(BANK_QUIZZES_KEY, JSON.stringify(data.bankQuizzes));
+      const seenBankIds = new Set<string>();
+      const cleanBankQuizzes = data.bankQuizzes.filter((b) => {
+        if (!b || !b.id) return false;
+        if (seenBankIds.has(b.id)) return false;
+        seenBankIds.add(b.id);
+        return true;
+      });
+      localStorage.setItem(BANK_QUIZZES_KEY, JSON.stringify(cleanBankQuizzes));
     }
 
     return true;

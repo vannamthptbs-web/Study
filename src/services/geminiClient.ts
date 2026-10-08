@@ -283,3 +283,115 @@ YÊU CẦU:
     return JSON.parse(raw);
   });
 }
+
+export async function clientGenerateEssayExamFromAI(
+  apiKey: string,
+  subject: Subject,
+  grade: Grade,
+  topic: string,
+  questionCount: number = 3,
+  difficulty: 'easy' | 'medium' | 'hard' = 'medium',
+  files?: UploadedFileItem[],
+  customPrompt?: string
+): Promise<QuizData> {
+  return await executeWithModelFallback(apiKey, async (ai, model) => {
+    const count = Math.min(Math.max(Number(questionCount) || 3, 1), 10);
+    const promptText = `Bạn là chuyên gia sư phạm Tiểu học Việt Nam biên soạn đề thi tự luận chuẩn theo SGK:
+- Lớp: ${grade}, Môn: ${subject}, Chủ đề: "${topic}"
+- Số lượng: ${count} câu tự luận, Mức độ: ${difficulty}
+${customPrompt ? `- Yêu cầu thêm: ${customPrompt}` : ''}
+YÊU CẦU:
+1. Mỗi câu có: id, question (đề bài), points (số điểm, tổng các câu bằng 10), guideline (gợi ý cách giải), sampleAnswer (lời giải chi tiết mẫu), rubric (biểu điểm chấm), subtopic.
+2. Công thức và phép tính toán học viết trong LaTeX ($...$).`;
+
+    const parts: any[] = [];
+    if (files && files.length > 0) {
+      parts.push(...buildFileParts(files));
+    }
+    parts.push({ text: promptText });
+
+    const response = await ai.models.generateContent({
+      model,
+      contents: { parts },
+      config: {
+        responseMimeType: 'application/json',
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            title: { type: Type.STRING },
+            topic: { type: Type.STRING },
+            grade: { type: Type.STRING },
+            subject: { type: Type.STRING },
+            durationMinutes: { type: Type.INTEGER },
+            essayQuestions: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  id: { type: Type.INTEGER },
+                  question: { type: Type.STRING },
+                  points: { type: Type.NUMBER },
+                  guideline: { type: Type.STRING },
+                  sampleAnswer: { type: Type.STRING },
+                  rubric: { type: Type.STRING },
+                  subtopic: { type: Type.STRING },
+                },
+                required: ['id', 'question', 'points', 'sampleAnswer', 'rubric'],
+              },
+            },
+          },
+          required: ['title', 'topic', 'essayQuestions'],
+        },
+      },
+    });
+
+    const raw = response.text || '{}';
+    const parsed = JSON.parse(raw);
+    parsed.examFormat = 'essay';
+    parsed.questions = [];
+    return parsed;
+  });
+}
+
+export async function clientGradeEssayWithAI(
+  apiKey: string,
+  question: string,
+  sampleAnswer: string,
+  rubric: string,
+  studentAnswer: string,
+  maxPoints: number = 2,
+  grade?: Grade,
+  subject?: Subject
+): Promise<{ score: number; comment: string }> {
+  return await executeWithModelFallback(apiKey, async (ai, model) => {
+    const prompt = `Bạn là giáo viên chấm thi Tiểu học tận tâm (${subject || 'Toán'} - ${grade || 'Tiểu học'}).
+- Đề bài tự luận: "${question}"
+- Thang điểm tối đa: ${maxPoints} điểm
+- Đáp án mẫu & lời giải chuẩn: "${sampleAnswer}"
+- Biểu điểm: "${rubric || 'Đúng lời giải và phép tính'}"
+- Bài làm của học sinh:
+"""
+${studentAnswer}
+"""
+Hãy chấm điểm (0 đến ${maxPoints}) và nhận xét lời phê ân cần, giúp học sinh sửa lỗi và tiến bộ.`;
+
+    const response = await ai.models.generateContent({
+      model,
+      contents: prompt,
+      config: {
+        responseMimeType: 'application/json',
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            score: { type: Type.NUMBER },
+            comment: { type: Type.STRING },
+          },
+          required: ['score', 'comment'],
+        },
+      },
+    });
+
+    const raw = response.text || '{"score": 0, "comment": "Chưa thể chấm điểm."}';
+    return JSON.parse(raw);
+  });
+}

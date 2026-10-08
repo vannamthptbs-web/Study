@@ -38,6 +38,7 @@ import { autoSyncQuiz, syncQuizResult, getSpreadsheetUrl } from '../services/fir
 import { FileAttachmentInput } from './FileAttachmentInput';
 import { MarkdownContent } from './MarkdownContent';
 import { FormulaToolbar } from './FormulaToolbar';
+import { EssayExamSection } from './EssayExamSection';
 
 interface Props {
   selectedGrade: Grade;
@@ -64,6 +65,8 @@ export const QuizModule: React.FC<Props> = ({
 }) => {
   // Mode: 'student_practice' or 'teacher_creator'
   const [subMode, setSubMode] = useState<'practice' | 'creator'>('practice');
+  // Exam Format: 'multiple_choice' (Trắc nghiệm) or 'essay' (Tự luận)
+  const [examFormat, setExamFormat] = useState<'multiple_choice' | 'essay'>('multiple_choice');
 
   // Generator parameters
   const [topic, setTopic] = useState('');
@@ -304,48 +307,65 @@ export const QuizModule: React.FC<Props> = ({
             Mọi bài thi đều được tự động lưu vào <strong>Firestore</strong> và bảng tính <strong>Google Sheets</strong>.
           </p>
 
-          {/* Mode Switch: Practice vs Teacher Quiz Creator */}
+          {/* Mode Switch: Practice vs Teacher Quiz Creator vs Tự Luận */}
           <div className="mt-4 flex flex-wrap items-center gap-2">
             <button
+              type="button"
               onClick={() => {
+                setExamFormat('multiple_choice');
                 setSubMode('practice');
                 setQuizData(null);
                 setSubmitted(false);
               }}
               className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
-                subMode === 'practice'
+                examFormat === 'multiple_choice' && subMode === 'practice'
                   ? 'bg-white text-emerald-950 shadow-xs'
                   : 'bg-white/15 text-white hover:bg-white/25'
               }`}
             >
-              Học sinh: Luyện đề & Bấm giờ
+              Học sinh: Luyện trắc nghiệm
             </button>
             <button
+              type="button"
               onClick={() => {
                 if (currentUser.isGuest) {
                   onNotification('Chế độ Soạn đề dành cho Thầy/Cô giáo. Vui lòng đăng nhập tài khoản Giáo viên.');
                   if (onOpenAuth) onOpenAuth();
                   return;
                 }
-                if (currentUser.role === 'student') {
-                  onNotification('Chế độ Soạn đề dành cho Thầy/Cô giáo. Học sinh hãy chọn tab "Luyện đề & Bấm giờ" để làm bài nhé! 🎒');
-                  return;
-                }
+                setExamFormat('multiple_choice');
                 setSubMode('creator');
                 setQuizData(null);
                 setSubmitted(false);
               }}
               className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
-                subMode === 'creator'
+                examFormat === 'multiple_choice' && subMode === 'creator'
                   ? 'bg-white text-emerald-950 shadow-xs'
                   : 'bg-white/15 text-white hover:bg-white/25'
               }`}
             >
-              Giáo viên: Soạn đề & Xuất JSON {currentUser.role === 'student' && '(Dành riêng cho GV)'}
+              Giáo viên: Soạn trắc nghiệm & Xuất JSON
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setExamFormat('essay');
+                setQuizData(null);
+                setSubmitted(false);
+              }}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                examFormat === 'essay'
+                  ? 'bg-amber-400 text-slate-950 shadow-md font-extrabold'
+                  : 'bg-amber-500/20 text-amber-200 hover:bg-amber-500/30 border border-amber-400/30'
+              }`}
+            >
+              <FileText className="w-3.5 h-3.5 text-amber-300" />
+              <span>Đề Tự luận (AI soạn hoặc Tự gõ)</span>
             </button>
 
             {bankQuizzes.length > 0 && (
               <button
+                type="button"
                 onClick={() => setShowBank(!showBank)}
                 className="ml-auto text-xs font-bold text-sky-200 hover:text-white flex items-center gap-1.5 bg-white/10 px-3 py-1.5 rounded-xl transition-colors"
               >
@@ -449,43 +469,73 @@ export const QuizModule: React.FC<Props> = ({
             </button>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 pt-1">
-            {bankQuizzes.slice(0, 6).map((item) => (
-              <div
-                key={item.id}
-                className="p-3 rounded-xl bg-white border border-slate-200 text-left hover:border-emerald-400 text-xs transition-all shadow-2xs space-y-2"
-              >
-                <div className="flex items-center justify-between text-[10px] text-slate-400">
-                  <span className="font-semibold text-emerald-700">
-                    {item.subject} • {item.grade}
-                  </span>
-                  <span>{new Date(item.createdAt).toLocaleDateString('vi-VN')}</span>
+            {bankQuizzes.slice(0, 9).map((item, bIdx) => {
+              const isEssay =
+                item.examFormat === 'essay' ||
+                (item.data && Array.isArray(item.data.essayQuestions) && item.data.essayQuestions.length > 0);
+              const questionCountNum = isEssay
+                ? item.data.essayQuestions?.length || 0
+                : item.data.questions?.length || 0;
+
+              return (
+                <div
+                  key={item.id ? `${item.id}-${bIdx}` : `bank-${bIdx}`}
+                  className="p-3 rounded-xl bg-white border border-slate-200 text-left hover:border-emerald-400 text-xs transition-all shadow-2xs space-y-2"
+                >
+                  <div className="flex items-center justify-between text-[10px] text-slate-400">
+                    <span className="font-semibold text-emerald-700">
+                      {item.subject} • {item.grade}
+                    </span>
+                    <span className={`px-1.5 py-0.2 rounded font-bold ${isEssay ? 'bg-amber-100 text-amber-800' : 'bg-sky-100 text-sky-800'}`}>
+                      {isEssay ? 'Tự luận' : 'Trắc nghiệm'}
+                    </span>
+                  </div>
+                  <h5 className="font-bold text-slate-900 line-clamp-2">{item.title}</h5>
+                  <div className="flex items-center justify-between pt-1">
+                    <span className="text-[11px] text-slate-500">
+                      {questionCountNum} câu
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (isEssay) {
+                          setExamFormat('essay');
+                        } else {
+                          setExamFormat('multiple_choice');
+                          setQuizData(item.data);
+                          setSubmitted(false);
+                          setCurrentQuestionIndex(0);
+                          setSelectedAnswers({});
+                        }
+                        setShowBank(false);
+                      }}
+                      className="px-2.5 py-1 bg-emerald-600 text-white font-bold rounded-lg text-[11px] hover:bg-emerald-700"
+                    >
+                      Mở đề này
+                    </button>
+                  </div>
                 </div>
-                <h5 className="font-bold text-slate-900 line-clamp-2">{item.title}</h5>
-                <div className="flex items-center justify-between pt-1">
-                  <span className="text-[11px] text-slate-500">
-                    {item.data.questions?.length || 0} câu
-                  </span>
-                  <button
-                    onClick={() => {
-                      setQuizData(item.data);
-                      setSubmitted(false);
-                      setCurrentQuestionIndex(0);
-                      setSelectedAnswers({});
-                      setShowBank(false);
-                    }}
-                    className="px-2.5 py-1 bg-emerald-600 text-white font-bold rounded-lg text-[11px] hover:bg-emerald-700"
-                  >
-                    Mở đề này
-                  </button>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
 
-      {/* QUIZ GENERATOR FORM (When no active quiz) */}
-      {!quizData && (
+      {/* RENDER ESSAY SECTION OR MULTIPLE CHOICE SECTION */}
+      {examFormat === 'essay' ? (
+        <EssayExamSection
+          selectedGrade={selectedGrade}
+          setSelectedGrade={setSelectedGrade}
+          selectedSubject={selectedSubject}
+          setSelectedSubject={setSelectedSubject}
+          currentUser={currentUser}
+          onNotification={onNotification}
+          onOpenAuth={onOpenAuth}
+        />
+      ) : (
+        <>
+          {/* QUIZ GENERATOR FORM (When no active quiz) */}
+          {!quizData && (
         <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-xs space-y-4">
           <div className="space-y-2">
             <label className="block text-sm font-bold text-slate-800">
@@ -949,6 +999,8 @@ export const QuizModule: React.FC<Props> = ({
             </div>
           )}
         </div>
+      )}
+        </>
       )}
     </div>
   );

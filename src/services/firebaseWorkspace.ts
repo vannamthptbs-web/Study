@@ -411,26 +411,30 @@ export const syncAllAppDataToGoogleSheets = async (
   const taiKhoanRows: any[][] = [
     [
       'Mã ID',
-      'Email',
+      'Tên Đăng Nhập',
+      'Email Tài Khoản',
+      'Mật Khẩu',
       'Họ Và Tên',
       'Vai Trò',
       'Khối Lớp',
-      'Môn Học / Phụ Trách',
+      'Môn Học Phụ Trách',
       'Trường Học',
-      'Ngày Tạo',
+      'Thời Gian Đăng Ký',
     ],
     ...accounts.map((acc) => [
       acc.id,
+      acc.username || (acc.email ? acc.email.split('@')[0] : 'user'),
       acc.email,
+      acc.password || (acc.username === 'admin' ? 'admin123' : ''),
       acc.name,
       acc.role === 'admin' ? 'Quản trị viên (Admin)' : acc.role === 'teacher' ? 'Giáo viên (GV)' : 'Học sinh',
-      acc.grade || '',
+      acc.grade || 'Lớp 4',
       acc.subject || '',
-      acc.school || '',
+      acc.school || 'Trường Tiểu học',
       new Date(acc.createdAt).toLocaleString('vi-VN'),
     ]),
   ];
-  await updateSheetRange(token, spreadsheetId, 'TaiKhoan!A1:H' + (taiKhoanRows.length + 10), taiKhoanRows);
+  await updateSheetRange(token, spreadsheetId, 'TaiKhoan!A1:J' + (taiKhoanRows.length + 10), taiKhoanRows);
 
   // 2. Sync Sheet LichSuQuiz
   const lichSuRows: any[][] = [
@@ -586,15 +590,17 @@ export const syncUserRegistration = async (
   if (token) {
     try {
       const sheetId = await getOrCreateSpreadsheet(token);
-      await appendSheetRow(token, sheetId, 'TaiKhoan!A:H', [
+      await appendSheetRow(token, sheetId, 'TaiKhoan!A:J', [
         [
           user.id,
+          user.username || (user.email ? user.email.split('@')[0] : 'user'),
           user.email,
+          user.password || (user.username === 'admin' ? 'admin123' : ''),
           user.name,
-          user.role === 'teacher' ? 'Giáo viên' : 'Học sinh',
-          user.grade || '',
+          user.role === 'teacher' ? 'Giáo viên (GV)' : user.role === 'admin' ? 'Quản trị viên (Admin)' : 'Học sinh',
+          user.grade || 'Lớp 4',
           user.subject || '',
-          user.school || '',
+          user.school || 'Trường Tiểu học',
           new Date(user.createdAt).toLocaleString('vi-VN'),
         ],
       ]);
@@ -761,15 +767,17 @@ export const autoSyncUser = async (user: AppUser): Promise<void> => {
     const token = cachedAccessToken;
     if (token) {
       const sheetId = await getOrCreateSpreadsheet(token);
-      await appendSheetRow(token, sheetId, 'TaiKhoan!A:H', [
+      await appendSheetRow(token, sheetId, 'TaiKhoan!A:J', [
         [
           user.id,
+          user.username || (user.email ? user.email.split('@')[0] : 'user'),
           user.email,
+          user.password || (user.username === 'admin' ? 'admin123' : ''),
           user.name,
           user.role === 'admin' ? 'Quản trị viên (Admin)' : user.role === 'teacher' ? 'Giáo viên (GV)' : 'Học sinh',
-          user.grade || '',
+          user.grade || 'Lớp 4',
           user.subject || '',
-          user.school || '',
+          user.school || 'Trường Tiểu học',
           new Date(user.createdAt).toLocaleString('vi-VN'),
         ],
       ]);
@@ -896,7 +904,7 @@ export const autoSyncBankQuiz = async (quiz: any): Promise<void> => {
           quiz.grade,
           quiz.creatorName,
           quiz.creatorRole === 'teacher' ? 'Giáo viên' : 'Học sinh',
-          quiz.data?.questions?.length || 0,
+          quiz.data?.questions?.length || quiz.data?.essayQuestions?.length || 0,
           new Date(quiz.createdAt).toLocaleString('vi-VN'),
         ],
       ]);
@@ -909,18 +917,31 @@ export const autoSyncBankQuiz = async (quiz: any): Promise<void> => {
 // Sample Google Apps Script Code template for Admin (Hỗ trợ Đọc -> Ghi -> Sửa theo ID duy nhất)
 export const SAMPLE_APPS_SCRIPT_CODE = `/**
  * =========================================================================
- * STUDYAI - MÃ NGUỒN GOOGLE APPS SCRIPT CHUẨN (DATABASE DUY NHẤT)
+ * STUDYAI - MÃ NGUỒN GOOGLE APPS SCRIPT CHUẨN (HỆ THỐNG CƠ SỞ DỮ LIỆU ĐẦY ĐỦ)
  * Dành riêng cho Ban Quản Trị Hệ Thống (Admin)
- * Hướng dẫn triển khai:
- * 1. Mở Google Sheet -> Tiện ích mở rộng -> Apps Script
- * 2. Xóa code cũ, dán toàn bộ mã này vào file Code.gs
- * 3. Bấm "Triển khai" (Deploy) -> "Tùy chọn triển khai mới" (New deployment)
- * 4. Loại: "Ứng dụng web" (Web App)
- *    - Mô tả: StudyAI Database Engine v2
- *    - Thực thi dưới dạng (Execute as): "Tôi" (Me)
- *    - Ai có quyền truy cập (Who has access): "Bất kỳ ai" (Anyone)
- * 5. Bấm "Triển khai", cấp quyền Google và sao chép URL kết thúc bằng /exec
- * 6. Dán URL vào ô "Vị Trí Lưu Link Google Sheet" trong Admin Panel của App
+ * 
+ * ✨ ĐẶC ĐIỂM BẢNG TÍNH GOOGLE SHEETS:
+ * 1. Bảng biểu đẹp mắt, tiêu đề Tiếng Việt rõ ràng, màu sắc chuyên nghiệp.
+ * 2. Tự động khởi tạo đầy đủ 5 trang tính (Tabs):
+ *    - TaiKhoan (Quản lý tài khoản, mật khẩu, họ tên, vai trò, trường, khối lớp, môn)
+ *    - LichSuQuiz (Lưu chi tiết điểm số, số câu đúng/sai, lỗ hổng kiến thức)
+ *    - TienDoHocTap (Lưu XP, chuỗi ngày Streak, số câu hỏi/bài giải đã học)
+ *    - NganHangDeThi (Lưu đề thi trắc nghiệm do Thầy/Cô và Học sinh biên soạn)
+ *    - LoHongKienThuc (Theo dõi các chuyên đề học sinh hay trả lời sai)
+ * 3. Tự động đóng băng hàng tiêu đề (Freeze Header), căn chỉnh độ rộng cột và định dạng.
+ * 4. Cho phép Đọc (Read), Ghi mới (Create), Cập nhật (Update) mật khẩu/thông tin theo Mã ID duy nhất.
+ * 
+ * 🛠️ CÁCH TRIỂN KHAI (CHỈ 1 PHÚT):
+ * 1. Mở file Google Sheet của bạn -> Chọn Tiện ích mở rộng (Extensions) -> Apps Script.
+ * 2. Xóa hết mã cũ trong file Code.gs, dán toàn bộ mã này vào.
+ * 3. Nhấn nút Lưu (biểu tượng đĩa mềm 💾).
+ * 4. Nhấn "Triển khai" (Deploy) -> "Tùy chọn triển khai mới" (New deployment).
+ *    - Loại: "Ứng dụng web" (Web app).
+ *    - Mô tả: StudyAI Database Pro v3.
+ *    - Thực thi dưới dạng (Execute as): "Tôi" (Me).
+ *    - Ai có quyền truy cập (Who has access): "Bất kỳ ai" (Anyone).
+ * 5. Bấm Triển khai, đăng nhập cấp quyền Google, sao chép URL kết thúc bằng "/exec".
+ * 6. Dán URL này vào mục "Vị Trí Lưu Link Google Sheet" trong Quản trị của StudyAI!
  * =========================================================================
  */
 
@@ -944,10 +965,13 @@ function handleRequest(data) {
   var payload = (data && data.payload) ? data.payload : {};
 
   try {
-    // 1. ĐỌC TOÀN BỘ DỮ LIỆU TỪ GOOGLE SHEETS
+    // 1. TỰ ĐỘNG KHỞI TẠO HOẶC ĐỊNH DẠNG CẢ 5 BẢNG ĐẦY ĐỦ TIÊU ĐỀ TIẾNG VIỆT
+    initAllSheets(ss);
+
+    // 2. ĐỌC TOÀN BỘ DỮ LIỆU TỪ GOOGLE SHEETS
     if (action === "read_all" || action === "get_all") {
       var result = {
-        accounts: readSheetAsJson(ss, "TaiKhoan", ["id", "email", "name", "role", "grade", "subject", "school", "createdAt", "password"]),
+        accounts: readSheetAsJson(ss, "TaiKhoan", ["id", "username", "email", "password", "name", "role", "grade", "subject", "school", "createdAt"]),
         quizzes: readSheetAsJson(ss, "LichSuQuiz", ["id", "timestamp", "userEmail", "userName", "userRole", "subject", "grade", "topic", "correctCount", "totalQuestions", "score", "weakSubtopics"]),
         bankQuizzes: readSheetAsJson(ss, "NganHangDeThi", ["id", "title", "topic", "subject", "grade", "creatorName", "creatorRole", "createdAt", "dataJson"]),
         weakTopics: readSheetAsJson(ss, "LoHongKienThuc", ["id", "userId", "subject", "topicName", "wrongCount", "totalTested", "status", "lastMissedDate"])
@@ -956,45 +980,64 @@ function handleRequest(data) {
         .setMimeType(ContentService.MimeType.JSON);
     }
 
-    // 2. THÊM / CẬP NHẬT TÀI KHOẢN THEO ID DUY NHẤT (Không ghi đè bản ghi khác)
+    // 3. THÊM / CẬP NHẬT TÀI KHOẢN THEO ID HOẶC EMAIL (Không bao giờ ghi đè sai dòng)
     if (action === "sync_user" || action === "upsert_user") {
-      var sheet = getOrCreateSheet(ss, "TaiKhoan", ["Mã ID", "Email", "Họ Tên", "Vai Trò", "Khối Lớp", "Môn Học", "Trường Học", "Thời Gian", "Mật Khẩu"]);
-      var rowIdx = findRowIndexById(sheet, 1, payload.id || payload.username);
+      var sheet = getOrCreateFormattedSheet(ss, "TaiKhoan", [
+        "Mã ID", "Tên Đăng Nhập", "Email Tài Khoản", "Mật Khẩu", "Họ Và Tên",
+        "Vai Trò", "Khối Lớp", "Môn Học Phụ Trách", "Trường Học", "Thời Gian Đăng Ký"
+      ], "#1e3a8a");
+
+      var identifier = payload.id || payload.username || payload.email;
+      var rowIdx = findRowIndexByIdOrEmail(sheet, identifier);
+
+      var roleLabel = payload.role === "admin" ? "Quản trị viên (Admin)" : (payload.role === "teacher" ? "Giáo viên (GV)" : "Học sinh");
       var rowData = [
-        payload.id || "",
+        payload.id || ("user-" + new Date().getTime()),
+        payload.username || (payload.email ? payload.email.split("@")[0] : "user"),
         payload.email || "",
+        payload.password || "",
         payload.name || "",
-        payload.role || "student",
-        payload.grade || "",
+        roleLabel,
+        payload.grade || "Lớp 4",
         payload.subject || "",
-        payload.school || "",
-        payload.createdAt ? new Date(payload.createdAt).toLocaleString("vi-VN") : new Date().toLocaleString("vi-VN"),
-        payload.password || ""
+        payload.school || "Trường Tiểu học",
+        payload.createdAt ? new Date(payload.createdAt).toLocaleString("vi-VN") : new Date().toLocaleString("vi-VN")
       ];
+
       if (rowIdx > 0) {
+        // Nếu bản ghi cũ đã có mật khẩu mà bản ghi mới để trống, giữ lại mật khẩu cũ
+        if (!rowData[3]) {
+          var oldPw = sheet.getRange(rowIdx, 4).getValue();
+          if (oldPw) rowData[3] = oldPw;
+        }
         sheet.getRange(rowIdx, 1, 1, rowData.length).setValues([rowData]);
       } else {
         sheet.appendRow(rowData);
+        var lastRow = sheet.getLastRow();
+        styleDataRow(sheet, lastRow, rowData.length);
       }
       return ContentService.createTextOutput(JSON.stringify({ status: "success" })).setMimeType(ContentService.MimeType.JSON);
     }
 
-    // 3. ĐỔI MẬT KHẨU THEO ID DUY NHẤT
+    // 4. ĐỔI MẬT KHẨU THEO MÃ ID HOẶC EMAIL DUY NHẤT
     if (action === "update_password") {
-      var sheet = getOrCreateSheet(ss, "TaiKhoan", ["Mã ID", "Email", "Họ Tên", "Vai Trò", "Khối Lớp", "Môn Học", "Trường Học", "Thời Gian", "Mật Khẩu"]);
-      var rowIdx = findRowIndexById(sheet, 1, payload.id || payload.userId);
-      if (rowIdx > 0 && payload.newPassword) {
-        sheet.getRange(rowIdx, 9).setValue(payload.newPassword);
-        return ContentService.createTextOutput(JSON.stringify({ status: "success", updatedRow: rowIdx })).setMimeType(ContentService.MimeType.JSON);
+      var sheet = ss.getSheetByName("TaiKhoan");
+      if (sheet) {
+        var idToFind = payload.id || payload.userId || payload.email || payload.username;
+        var rowIdx = findRowIndexByIdOrEmail(sheet, idToFind);
+        if (rowIdx > 0 && payload.newPassword) {
+          sheet.getRange(rowIdx, 4).setValue(payload.newPassword);
+          return ContentService.createTextOutput(JSON.stringify({ status: "success", updatedRow: rowIdx })).setMimeType(ContentService.MimeType.JSON);
+        }
       }
       return ContentService.createTextOutput(JSON.stringify({ status: "success" })).setMimeType(ContentService.MimeType.JSON);
     }
 
-    // 4. XÓA TÀI KHOẢN THEO ID DUY NHẤT (Chỉ xóa đúng bản ghi được chọn)
+    // 5. XÓA TÀI KHOẢN THEO ID DUY NHẤT
     if (action === "delete_user") {
       var sheet = ss.getSheetByName("TaiKhoan");
       if (sheet) {
-        var rowIdx = findRowIndexById(sheet, 1, payload.id || payload.userId);
+        var rowIdx = findRowIndexByIdOrEmail(sheet, payload.id || payload.userId || payload.email);
         if (rowIdx > 0) {
           sheet.deleteRow(rowIdx);
           return ContentService.createTextOutput(JSON.stringify({ status: "success", deletedRow: rowIdx })).setMimeType(ContentService.MimeType.JSON);
@@ -1003,40 +1046,81 @@ function handleRequest(data) {
       return ContentService.createTextOutput(JSON.stringify({ status: "success" })).setMimeType(ContentService.MimeType.JSON);
     }
 
-    // 5. LƯU BÀI LÀM TRẮC NGHIỆM (APPEND MỚI, KHÔNG XÓA DỮ LIỆU CŨ)
+    // 6. LƯU BÀI LÀM TRẮC NGHIỆM
     if (action === "sync_quiz") {
-      var sheet = getOrCreateSheet(ss, "LichSuQuiz", ["Mã Bài Thi", "Thời Gian", "Email", "Họ Tên", "Vai Trò", "Môn Học", "Khối Lớp", "Chủ Đề", "Số Đúng", "Tổng Câu", "Điểm Số", "Lỗ Hổng"]);
+      var sheet = getOrCreateFormattedSheet(ss, "LichSuQuiz", [
+        "Mã Bài Thi", "Thời Gian Nộp", "Email Học Sinh", "Họ Tên", "Vai Trò",
+        "Môn Học", "Khối Lớp", "Chủ Đề Quiz", "Số Câu Đúng", "Tổng Số Câu", "Điểm Số (/10)", "Lỗ Hổng Kiến Thức"
+      ], "#065f46");
+
       var r = payload.result || {};
       var u = payload.user || {};
-      sheet.appendRow([
-        r.id || "",
+      var rowData = [
+        r.id || ("quiz-" + new Date().getTime()),
         new Date(r.timestamp || Date.now()).toLocaleString("vi-VN"),
-        u.email || "",
-        u.name || "",
-        u.role || "",
+        u.email || u.username || "",
+        u.name || "Học sinh",
+        u.role === "teacher" ? "Giáo viên" : (u.role === "admin" ? "Admin" : "Học sinh"),
         r.subject || "",
         r.grade || "",
         r.topic || "",
         r.correctCount || 0,
         r.totalQuestions || 0,
-        r.score || 0,
-        (r.weakSubtopics || []).join(", ")
-      ]);
+        r.score !== undefined ? Number(r.score).toFixed(1) : "0.0",
+        (r.weakSubtopics && r.weakSubtopics.length > 0) ? r.weakSubtopics.join(", ") : "Đạt chuẩn (Không có)"
+      ];
+      sheet.appendRow(rowData);
+      styleDataRow(sheet, sheet.getLastRow(), rowData.length);
       return ContentService.createTextOutput(JSON.stringify({ status: "success" })).setMimeType(ContentService.MimeType.JSON);
     }
 
-    // 6. LƯU ĐỀ THI VÀO NGÂN HÀNG (CẬP NHẬT THEO ID HOẶC THÊM MỚI)
-    if (action === "sync_bank") {
-      var sheet = getOrCreateSheet(ss, "NganHangDeThi", ["Mã Đề", "Tiêu Đề", "Chủ Đề", "Môn Học", "Khối Lớp", "Người Tạo", "Vai Trò", "Ngày Tạo", "Dữ Liệu JSON"]);
-      var rowIdx = findRowIndexById(sheet, 1, payload.id);
+    // 7. LƯU TIẾN ĐỘ HỌC TẬP (CẬP NHẬT THEO EMAIL/USER)
+    if (action === "sync_progress") {
+      var sheet = getOrCreateFormattedSheet(ss, "TienDoHocTap", [
+        "Email / Username", "Họ Và Tên", "Khối Lớp", "Điểm Tích Lũy (XP)", "Chuỗi Học (Streak)",
+        "Số Câu Đã Hỏi", "Số Bài Đã Giải", "Số Đề Ôn Tập", "Số Đề Đã Thi", "Điểm Trung Bình"
+      ], "#4c1d95");
+
+      var rowIdx = findRowIndexByIdOrEmail(sheet, payload.email || payload.id || payload.username);
       var rowData = [
-        payload.id || "",
-        payload.title || "",
+        payload.email || payload.username || payload.id || "",
+        payload.name || "",
+        payload.grade || "Lớp 4",
+        payload.xp || 0,
+        payload.streakDays || 1,
+        payload.stats ? (payload.stats.questionsAsked || 0) : 0,
+        payload.stats ? (payload.stats.problemsSolved || 0) : 0,
+        payload.stats ? (payload.stats.reviewsCreated || 0) : 0,
+        payload.stats ? (payload.stats.quizzesCompleted || 0) : 0,
+        payload.stats && payload.stats.quizzesCompleted > 0 ? (payload.stats.totalQuizScoreSum / payload.stats.quizzesCompleted).toFixed(1) : "0.0"
+      ];
+      if (rowIdx > 0) {
+        sheet.getRange(rowIdx, 1, 1, rowData.length).setValues([rowData]);
+      } else {
+        sheet.appendRow(rowData);
+        styleDataRow(sheet, sheet.getLastRow(), rowData.length);
+      }
+      return ContentService.createTextOutput(JSON.stringify({ status: "success" })).setMimeType(ContentService.MimeType.JSON);
+    }
+
+    // 8. LƯU ĐỀ THI VÀO NGÂN HÀNG
+    if (action === "sync_bank") {
+      var sheet = getOrCreateFormattedSheet(ss, "NganHangDeThi", [
+        "Mã Đề Thi", "Tiêu Đề Đề Thi", "Chuyên Đề", "Môn Học", "Khối Lớp",
+        "Người Soạn Đề", "Vai Trò", "Số Lượng Câu", "Ngày Tạo", "Dữ Liệu JSON"
+      ], "#831843");
+
+      var rowIdx = findRowIndexByIdOrEmail(sheet, payload.id);
+      var qCount = (payload.data && payload.data.questions) ? payload.data.questions.length : 0;
+      var rowData = [
+        payload.id || ("bank-" + new Date().getTime()),
+        payload.title || "Đề ôn tập",
         payload.topic || "",
         payload.subject || "",
         payload.grade || "",
         payload.creatorName || "",
-        payload.creatorRole || "",
+        payload.creatorRole === "teacher" ? "Giáo viên" : "Học sinh",
+        qCount,
         new Date(payload.createdAt || Date.now()).toLocaleString("vi-VN"),
         JSON.stringify(payload.data || {})
       ];
@@ -1044,42 +1128,24 @@ function handleRequest(data) {
         sheet.getRange(rowIdx, 1, 1, rowData.length).setValues([rowData]);
       } else {
         sheet.appendRow(rowData);
+        styleDataRow(sheet, sheet.getLastRow(), rowData.length);
       }
       return ContentService.createTextOutput(JSON.stringify({ status: "success" })).setMimeType(ContentService.MimeType.JSON);
     }
 
-    // 7. TIẾN ĐỘ HỌC TẬP (THEO EMAIL/USERID)
-    if (action === "sync_progress") {
-      var sheet = getOrCreateSheet(ss, "TienDoHocTap", ["Email", "Họ Tên", "Khối Lớp", "Điểm XP", "Streak", "Số Câu Hỏi", "Số Bài Giải", "Số Đề Ôn", "Số Quiz", "Điểm TB"]);
-      var rowIdx = findRowIndexById(sheet, 1, payload.email || payload.id);
-      var rowData = [
-        payload.email || payload.id || "",
-        payload.name || "",
-        payload.grade || "",
-        payload.xp || 0,
-        payload.streakDays || 1,
-        payload.stats ? payload.stats.questionsAsked || 0 : 0,
-        payload.stats ? payload.stats.problemsSolved || 0 : 0,
-        payload.stats ? payload.stats.reviewsCreated || 0 : 0,
-        payload.stats ? payload.stats.quizzesCompleted || 0 : 0,
-        payload.stats && payload.stats.quizzesCompleted > 0 ? (payload.stats.totalQuizScoreSum / payload.stats.quizzesCompleted).toFixed(1) : "0.0"
-      ];
-      if (rowIdx > 0) {
-        sheet.getRange(rowIdx, 1, 1, rowData.length).setValues([rowData]);
-      } else {
-        sheet.appendRow(rowData);
-      }
-      return ContentService.createTextOutput(JSON.stringify({ status: "success" })).setMimeType(ContentService.MimeType.JSON);
-    }
-
-    // 8. ĐỒNG BỘ LỖ HỔNG KIẾN THỨC
+    // 9. LƯU LỖ HỔNG KIẾN THỨC
     if (action === "sync_weak_topic") {
-      var sheet = getOrCreateSheet(ss, "LoHongKienThuc", ["Mã Lỗ Hổng", "User ID", "Môn Học", "Chuyên Đề", "Số Lần Sai", "Tổng Lần Thi", "Trạng Thái", "Ngày Cập Nhật"]);
+      var sheet = getOrCreateFormattedSheet(ss, "LoHongKienThuc", [
+        "Mã Lỗ Hổng", "User ID / Email", "Môn Học", "Tên Chuyên Đề Bị Sai",
+        "Số Lần Trả Lời Sai", "Tổng Số Lần Kiểm Tra", "Trạng Thái Ôn Tập", "Ngày Ghi Nhận"
+      ], "#991b1b");
+
       var items = Array.isArray(payload.items) ? payload.items : [payload];
       for (var i = 0; i < items.length; i++) {
         var it = items[i];
         if (!it || !it.id) continue;
-        var rowIdx = findRowIndexById(sheet, 1, it.id);
+        var rowIdx = findRowIndexByIdOrEmail(sheet, it.id);
+        var statusVi = it.status === "mastered" ? "Đã nắm vững" : (it.status === "reviewing" ? "Đang ôn tập" : "Cần rèn luyện thêm");
         var rowData = [
           it.id,
           payload.userId || it.userId || "",
@@ -1087,13 +1153,14 @@ function handleRequest(data) {
           it.topicName || "",
           it.wrongCount || 1,
           it.totalTested || 1,
-          it.status || "needs_practice",
+          statusVi,
           new Date(it.lastMissedDate || Date.now()).toLocaleString("vi-VN")
         ];
         if (rowIdx > 0) {
           sheet.getRange(rowIdx, 1, 1, rowData.length).setValues([rowData]);
         } else {
           sheet.appendRow(rowData);
+          styleDataRow(sheet, sheet.getLastRow(), rowData.length);
         }
       }
       return ContentService.createTextOutput(JSON.stringify({ status: "success" })).setMimeType(ContentService.MimeType.JSON);
@@ -1105,31 +1172,86 @@ function handleRequest(data) {
   }
 }
 
-function getOrCreateSheet(ss, name, headers) {
+// Khởi tạo đầy đủ và trang trí chuyên nghiệp cho 5 sheets
+function initAllSheets(ss) {
+  getOrCreateFormattedSheet(ss, "TaiKhoan", [
+    "Mã ID", "Tên Đăng Nhập", "Email Tài Khoản", "Mật Khẩu", "Họ Và Tên",
+    "Vai Trò", "Khối Lớp", "Môn Học Phụ Trách", "Trường Học", "Thời Gian Đăng Ký"
+  ], "#1e3a8a");
+
+  getOrCreateFormattedSheet(ss, "LichSuQuiz", [
+    "Mã Bài Thi", "Thời Gian Nộp", "Email Học Sinh", "Họ Tên", "Vai Trò",
+    "Môn Học", "Khối Lớp", "Chủ Đề Quiz", "Số Câu Đúng", "Tổng Số Câu", "Điểm Số (/10)", "Lỗ Hổng Kiến Thức"
+  ], "#065f46");
+
+  getOrCreateFormattedSheet(ss, "TienDoHocTap", [
+    "Email / Username", "Họ Và Tên", "Khối Lớp", "Điểm Tích Lũy (XP)", "Chuỗi Học (Streak)",
+    "Số Câu Đã Hỏi", "Số Bài Đã Giải", "Số Đề Ôn Tập", "Số Đề Đã Thi", "Điểm Trung Bình"
+  ], "#4c1d95");
+
+  getOrCreateFormattedSheet(ss, "NganHangDeThi", [
+    "Mã Đề Thi", "Tiêu Đề Đề Thi", "Chuyên Đề", "Môn Học", "Khối Lớp",
+    "Người Soạn Đề", "Vai Trò", "Số Lượng Câu", "Ngày Tạo", "Dữ Liệu JSON"
+  ], "#831843");
+
+  getOrCreateFormattedSheet(ss, "LoHongKienThuc", [
+    "Mã Lỗ Hổng", "User ID / Email", "Môn Học", "Tên Chuyên Đề Bị Sai",
+    "Số Lần Trả Lời Sai", "Tổng Số Lần Kiểm Tra", "Trạng Thái Ôn Tập", "Ngày Ghi Nhận"
+  ], "#991b1b");
+}
+
+function getOrCreateFormattedSheet(ss, name, headers, headerColor) {
   var sheet = ss.getSheetByName(name);
   if (!sheet) {
     sheet = ss.insertSheet(name);
   }
+
+  // Nếu sheet mới tạo hoặc trống, ghi dòng tiêu đề có định dạng đẹp mắt
   if (sheet.getLastRow() === 0 && headers && headers.length > 0) {
     sheet.appendRow(headers);
-    // Tự động đóng băng dòng đầu tiên và in đậm tiêu đề
     sheet.setFrozenRows(1);
+
     var headerRange = sheet.getRange(1, 1, 1, headers.length);
     headerRange.setFontWeight("bold");
-    headerRange.setBackground("#1e293b");
+    headerRange.setBackground(headerColor || "#1e293b");
     headerRange.setFontColor("#ffffff");
+    headerRange.setFontSize(11);
+    headerRange.setHorizontalAlignment("center");
+    headerRange.setVerticalAlignment("middle");
+    sheet.setRowHeight(1, 38);
+
+    // Tự động căn chỉnh độ rộng các cột
+    for (var c = 1; c <= headers.length; c++) {
+      sheet.autoResizeColumn(c);
+    }
   }
   return sheet;
 }
 
-function findRowIndexById(sheet, colIndex, idToFind) {
-  if (!idToFind) return -1;
+function styleDataRow(sheet, rowIdx, colCount) {
+  try {
+    var range = sheet.getRange(rowIdx, 1, 1, colCount);
+    range.setVerticalAlignment("middle");
+    range.setFontSize(10);
+    sheet.setRowHeight(rowIdx, 28);
+  } catch(e) {}
+}
+
+function findRowIndexByIdOrEmail(sheet, identifier) {
+  if (!identifier) return -1;
   var lastRow = sheet.getLastRow();
   if (lastRow <= 1) return -1;
-  var values = sheet.getRange(2, colIndex, lastRow - 1, 1).getValues();
+
+  var clean = String(identifier).trim().toLowerCase();
+  // Quét cả cột 1 (ID), cột 2 (Username), cột 3 (Email)
+  var numCols = Math.min(sheet.getLastColumn(), 3);
+  var values = sheet.getRange(2, 1, lastRow - 1, numCols).getValues();
+
   for (var i = 0; i < values.length; i++) {
-    if (String(values[i][0]).trim().toLowerCase() === String(idToFind).trim().toLowerCase()) {
-      return i + 2;
+    for (var col = 0; col < numCols; col++) {
+      if (values[i][col] && String(values[i][col]).trim().toLowerCase() === clean) {
+        return i + 2;
+      }
     }
   }
   return -1;
@@ -1140,15 +1262,30 @@ function readSheetAsJson(ss, name, keys) {
   if (!sheet) return [];
   var lastRow = sheet.getLastRow();
   if (lastRow <= 1) return [];
+
   var numCols = keys.length;
-  var values = sheet.getRange(2, 1, lastRow - 1, numCols).getValues();
+  var actualCols = sheet.getLastColumn();
+  var colsToRead = Math.min(numCols, actualCols);
+  var values = sheet.getRange(2, 1, lastRow - 1, colsToRead).getValues();
+
   var list = [];
   for (var r = 0; r < values.length; r++) {
     var obj = {};
-    for (var c = 0; c < keys.length; c++) {
+    for (var c = 0; c < colsToRead; c++) {
       obj[keys[c]] = values[r][c];
+    }
+    // Nếu có username và id
+    if (!obj.username && obj.email) {
+      obj.username = String(obj.email).split("@")[0];
+    }
+    // Chuẩn hóa role
+    if (obj.role) {
+      var rLower = String(obj.role).toLowerCase();
+      if (rLower.includes("admin") || rLower.includes("quản trị")) obj.role = "admin";
+      else if (rLower.includes("giáo viên") || rLower.includes("gv") || rLower.includes("teacher")) obj.role = "teacher";
+      else obj.role = "student";
     }
     list.push(obj);
   }
   return list;
-}`;
+};`;

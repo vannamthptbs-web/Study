@@ -156,6 +156,38 @@ function generateFallbackQuiz(subject: string, grade: string, topic: string) {
   };
 }
 
+function generateFallbackEssayExam(subject: string, grade: string, topic: string) {
+  return {
+    title: `Đề kiểm tra tự luận: ${topic}`,
+    topic,
+    grade: grade || 'Lớp 4',
+    subject: subject || 'Toán',
+    examFormat: 'essay',
+    durationMinutes: 40,
+    questions: [],
+    essayQuestions: [
+      {
+        id: 1,
+        question: `Bài 1 (${grade || 'Tiểu học'} - ${subject || 'Toán'}): Em hãy nêu quy tắc và trình bày chi tiết các bước tính toán/lập luận liên quan đến chủ đề "${topic}". Viết rõ từng bước thực hiện.`,
+        points: 4,
+        guideline: 'Xác định yêu cầu bài toán, áp dụng đúng quy tắc đã học trong SGK.',
+        sampleAnswer: `1. Đọc kỹ đề bài và tóm tắt các dữ kiện đã cho.\n2. Thực hiện các bước tính toán theo quy tắc của chương trình ${grade || 'Tiểu học'}.\n3. Ghi rõ câu trả lời/đáp số kèm đơn vị đo tương ứng.`,
+        rubric: 'Nêu đúng phương pháp/câu lời giải: 1.5 điểm; Các bước tính toán/lập luận chính xác: 2.0 điểm; Kết luận/đáp số đúng: 0.5 điểm.',
+        subtopic: `Kiến thức trọng tâm ${topic}`,
+      },
+      {
+        id: 2,
+        question: `Bài 2 (Toán có lời văn / Vận dụng thực tế): Một bài toán ứng dụng thực tiễn về "${topic}". Em hãy tóm tắt đề, viết lời giải, thiết lập phép tính và đáp số.`,
+        points: 6,
+        guideline: 'Vẽ sơ đồ hoặc tóm tắt trước khi tính toán để tránh nhầm lẫn.',
+        sampleAnswer: `Bài giải:\n- Bước 1: Tìm đại lượng thứ nhất theo đề bài.\n- Bước 2: Tìm đại lượng thứ hai theo yêu cầu của bài toán.\n- Đáp số: Kết quả tính toán cuối cùng.`,
+        rubric: 'Tóm tắt & lời giải rõ ràng: 2.0 điểm; Phép tính chính xác: 3.0 điểm; Đáp số đúng kèm đơn vị: 1.0 điểm.',
+        subtopic: `Vận dụng giải toán ${topic}`,
+      },
+    ],
+  };
+}
+
 // API 1: Chatbot gia sư đa lượt (Multi-turn chat + Multimodal)
 app.post('/api/chat', async (req: Request, res: Response) => {
   try {
@@ -446,6 +478,179 @@ YÊU CẦU BẮT BUỘC VỀ DỮ LIỆU JSON:
     res.status(500).json({
       error: formatErrorMessage(error, 'Lỗi khi tạo đề trắc nghiệm.'),
     });
+  }
+});
+
+// API 4.2: Tạo bộ đề thi tự luận chuẩn cấu trúc cho Giáo viên & Học sinh
+app.post('/api/essay-exam', async (req: Request, res: Response) => {
+  try {
+    const {
+      subject,
+      grade,
+      topic,
+      questionCount = 3,
+      difficulty = 'medium',
+      files,
+      customPrompt,
+      role = 'teacher',
+    } = req.body;
+
+    const hasTopic = topic && typeof topic === 'string' && topic.trim().length > 0;
+    const hasFiles = files && Array.isArray(files) && files.length > 0;
+
+    if (!hasTopic && !hasFiles) {
+      res.status(400).json({ error: 'Vui lòng cung cấp chủ đề hoặc tải tệp/ảnh chụp đề thi tự luận.' });
+      return;
+    }
+
+    const ai = getGenAIClient();
+    const count = Math.min(Math.max(Number(questionCount) || 3, 1), 10);
+
+    const promptText = `Bạn là chuyên gia sư phạm Tiểu học Việt Nam (Bộ GD&ĐT), chuyên biên soạn đề kiểm tra tự luận chất lượng cao cho Thầy/Cô giáo và Học sinh.
+- Đối tượng: ${role === 'teacher' ? 'Thầy/Cô giáo Tiểu học đang ra đề kiểm tra / bài thi học kỳ' : 'Học sinh luyện tập tự luận'}
+- Khối lớp: ${grade || 'Lớp 4'}
+- Môn học: ${subject || 'Toán'}
+- Chủ đề: "${topic || 'Theo tài liệu/hình ảnh đính kèm'}"
+- Số lượng câu hỏi tự luận: ${count} câu
+- Mức độ: ${difficulty === 'easy' ? 'Nhận biết - Thông hiểu' : difficulty === 'hard' ? 'Vận dụng nâng cao' : 'Thông hiểu - Vận dụng thực tế'}
+${customPrompt ? `- Yêu cầu sư phạm đặc biệt từ Giáo viên: ${customPrompt}` : ''}
+
+YÊU CẦU ĐỐI VỚI ĐỀ THI TỰ LUẬN TIỂU HỌC:
+1. Đề thi bám sát chương trình SGK mới (Kết nối tri thức, Chân trời sáng tạo, Cánh diều).
+2. Câu hỏi tự luận rõ ràng, bài toán có lời văn giàu tính thực tế, phù hợp lứa tuổi học sinh Tiểu học.
+3. Nếu có tệp/ảnh tài liệu đính kèm: Hãy đọc kỹ và bám sát nội dung, hình ảnh hoặc đề bài trong tệp đó.
+4. MỖI CÂU HỎI TỰ LUẬN BẮT BUỘC CÓ:
+   - "id": Số thứ tự (1, 2, 3...)
+   - "question": Nội dung đề bài/câu hỏi chi tiết.
+   - "points": Số điểm của câu (phân bổ hợp lý để tổng điểm các câu bằng 10 điểm, ví dụ 3 câu: 3, 3, 4 điểm).
+   - "guideline": Gợi ý phương pháp giải / các bước tư duy ngắn gọn.
+   - "sampleAnswer": Lời giải mẫu hoàn chỉnh từng bước, câu lời giải rõ ràng, phép tính và đáp số cụ thể.
+   - "rubric": Biểu điểm chấm chi tiết từng phần (ví dụ: "Lời giải: 0.5đ; Phép tính: 1.0đ; Đáp số: 0.5đ") giúp Giáo viên chấm bài thuận tiện.
+   - "subtopic": Tên chuyên đề hoặc dạng bài cụ thể.
+5. CÔNG THỨC TOÁN & ĐƠN VỊ ĐO CHUẨN XÁC: Mọi biểu thức, phân số, công thức hình học PHẢI viết theo chuẩn LaTeX trong cặp dấu $...$ (ví dụ: $15 \\times 8 = 120$, $\\frac{3}{5}$, $S = a \\times b$, $45\\text{ m}^2$).`;
+
+    const parts: any[] = [];
+    const fileParts = buildFileParts(files);
+    if (fileParts.length > 0) {
+      parts.push(...fileParts);
+    }
+    parts.push({ text: promptText });
+
+    const response = await generateWithModelFallback((model) =>
+      ai.models.generateContent({
+        model,
+        contents: { parts },
+        config: {
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              title: { type: Type.STRING, description: 'Tiêu đề đề thi tự luận' },
+              topic: { type: Type.STRING, description: 'Chủ đề bài kiểm tra' },
+              grade: { type: Type.STRING, description: 'Khối lớp' },
+              subject: { type: Type.STRING, description: 'Môn học' },
+              durationMinutes: { type: Type.INTEGER, description: 'Thời gian làm bài tính bằng phút' },
+              essayQuestions: {
+                type: Type.ARRAY,
+                description: 'Danh sách các câu hỏi tự luận',
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    id: { type: Type.INTEGER },
+                    question: { type: Type.STRING, description: 'Nội dung câu hỏi / bài toán tự luận' },
+                    points: { type: Type.NUMBER, description: 'Điểm số của câu hỏi (thang điểm 10)' },
+                    guideline: { type: Type.STRING, description: 'Gợi ý phương pháp giải' },
+                    sampleAnswer: { type: Type.STRING, description: 'Đáp án mẫu và lời giải chi tiết từng bước' },
+                    rubric: { type: Type.STRING, description: 'Biểu điểm chấm chi tiết cho từng ý' },
+                    subtopic: { type: Type.STRING, description: 'Chuyên đề hoặc dạng bài' },
+                  },
+                  required: ['id', 'question', 'points', 'sampleAnswer', 'rubric'],
+                },
+              },
+            },
+            required: ['title', 'topic', 'essayQuestions'],
+          },
+        },
+      })
+    );
+
+    const rawText = response.text || '{}';
+    const parsed = JSON.parse(rawText);
+    parsed.examFormat = 'essay';
+    parsed.questions = [];
+    res.json(parsed);
+  } catch (error: any) {
+    console.warn('Lỗi API /api/essay-exam:', error?.message);
+    const isTransient =
+      error?.message?.includes('503') ||
+      error?.message?.includes('429') ||
+      error?.message?.includes('UNAVAILABLE') ||
+      error?.status === 503;
+
+    if (isTransient && req.body.topic) {
+      const fallback = generateFallbackEssayExam(
+        req.body.subject || 'Toán',
+        req.body.grade || 'Lớp 4',
+        req.body.topic
+      );
+      res.json(fallback);
+      return;
+    }
+
+    res.status(500).json({
+      error: formatErrorMessage(error, 'Lỗi khi tạo đề thi tự luận.'),
+    });
+  }
+});
+
+// API 4.3: Chấm điểm bài làm tự luận tự động bằng AI (AI Essay Grader)
+app.post('/api/grade-essay', async (req: Request, res: Response) => {
+  try {
+    const { question, sampleAnswer, rubric, studentAnswer, maxPoints = 2, grade, subject } = req.body;
+    if (!studentAnswer || !studentAnswer.trim()) {
+      res.json({ score: 0, comment: 'Học sinh chưa điền nội dung câu trả lời.' });
+      return;
+    }
+
+    const ai = getGenAIClient();
+    const prompt = `Bạn là giáo viên chấm thi Tiểu học tận tâm, công bằng và giàu tình cảm.
+- Môn học: ${subject || 'Toán'}, Khối: ${grade || 'Tiểu học'}
+- Câu hỏi tự luận: "${question}"
+- Thang điểm tối đa: ${maxPoints} điểm
+- Đáp án mẫu & Lời giải chuẩn: "${sampleAnswer}"
+- Biểu điểm chấm: "${rubric || 'Đúng câu lời giải và phép tính'}"
+- BÀI LÀM CỦA HỌC SINH:
+"""
+${studentAnswer}
+"""
+
+YÊU CẦU CHẤM ĐIỂM:
+1. Đánh giá xem học sinh đã hiểu bài chưa, lời giải và phép tính đúng đến đâu.
+2. Cho điểm số (từ 0 đến ${maxPoints}, có thể lẻ 0.25 hoặc 0.5 điểm).
+3. Nhận xét chân thành, khen ngợi điểm làm đúng và chỉ ra nhẹ nhàng điểm cần sửa chữa hoặc cải thiện.`;
+
+    const response = await generateWithModelFallback((model) =>
+      ai.models.generateContent({
+        model,
+        contents: prompt,
+        config: {
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              score: { type: Type.NUMBER, description: `Điểm số đạt được từ 0 đến ${maxPoints}` },
+              comment: { type: Type.STRING, description: 'Lời phê và nhận xét chi tiết của giáo viên' },
+            },
+            required: ['score', 'comment'],
+          },
+        },
+      })
+    );
+
+    const raw = response.text || '{"score": 0, "comment": "Chưa thể chấm bài."}';
+    res.json(JSON.parse(raw));
+  } catch (error: any) {
+    res.status(500).json({ error: 'Không thể chấm điểm tự luận lúc này.' });
   }
 });
 

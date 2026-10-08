@@ -5,6 +5,8 @@ import {
   clientSolveProblemWithAI,
   clientGenerateTopicReview,
   clientGenerateQuizFromAI,
+  clientGenerateEssayExamFromAI,
+  clientGradeEssayWithAI,
 } from './geminiClient';
 
 // Safe JSON response parser that handles HTML error pages, 502/504 gateways, and non-JSON payloads gracefully
@@ -213,6 +215,120 @@ export async function generateQuizFromAI(
         );
       } catch (clientErr: any) {
         throw new Error(`Lỗi tạo bài trắc nghiệm: ${clientErr?.message || 'Không thể tạo đề'}`);
+      }
+    }
+
+    throw new Error(handleVercelHelpMessage(backendError));
+  }
+}
+
+export async function generateEssayExamFromAI(
+  subject: Subject,
+  grade: Grade,
+  topic: string,
+  questionCount: number = 3,
+  difficulty: 'easy' | 'medium' | 'hard' = 'medium',
+  files?: UploadedFileItem[],
+  customPrompt?: string,
+  role: UserRole = 'teacher'
+): Promise<QuizData> {
+  const payloadFiles = files?.map((f) => ({
+    name: f.name,
+    mimeType: f.mimeType,
+    data: f.data,
+  }));
+
+  try {
+    const response = await fetch('/api/essay-exam', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        subject,
+        grade,
+        topic,
+        questionCount,
+        difficulty,
+        files: payloadFiles,
+        customPrompt,
+        role,
+      }),
+    });
+
+    const data = await parseJsonResponse<QuizData>(
+      response,
+      'Lỗi khi tạo đề thi tự luận'
+    );
+    data.examFormat = 'essay';
+    return data;
+  } catch (backendError: any) {
+    console.warn('Backend /api/essay-exam issue, attempting client fallback:', backendError?.message);
+
+    const clientKey = getEffectiveApiKey();
+    if (clientKey) {
+      try {
+        return await clientGenerateEssayExamFromAI(
+          clientKey,
+          subject,
+          grade,
+          topic,
+          questionCount,
+          difficulty,
+          files,
+          customPrompt
+        );
+      } catch (clientErr: any) {
+        throw new Error(`Lỗi tạo đề tự luận: ${clientErr?.message || 'Không thể tạo đề'}`);
+      }
+    }
+
+    throw new Error(handleVercelHelpMessage(backendError));
+  }
+}
+
+export async function gradeEssayWithAI(
+  question: string,
+  sampleAnswer: string,
+  rubric: string,
+  studentAnswer: string,
+  maxPoints: number = 2,
+  grade?: Grade,
+  subject?: Subject
+): Promise<{ score: number; comment: string }> {
+  try {
+    const response = await fetch('/api/grade-essay', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        question,
+        sampleAnswer,
+        rubric,
+        studentAnswer,
+        maxPoints,
+        grade,
+        subject,
+      }),
+    });
+
+    return await parseJsonResponse<{ score: number; comment: string }>(
+      response,
+      'Lỗi khi chấm điểm bài tự luận'
+    );
+  } catch (backendError: any) {
+    const clientKey = getEffectiveApiKey();
+    if (clientKey) {
+      try {
+        return await clientGradeEssayWithAI(
+          clientKey,
+          question,
+          sampleAnswer,
+          rubric,
+          studentAnswer,
+          maxPoints,
+          grade,
+          subject
+        );
+      } catch (clientErr: any) {
+        throw new Error(`Lỗi chấm điểm: ${clientErr?.message || 'Không thể chấm bài'}`);
       }
     }
 

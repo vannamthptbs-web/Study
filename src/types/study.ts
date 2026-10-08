@@ -58,6 +58,8 @@ export interface ChatMessage {
   files?: Array<{ name: string; mimeType: string }>;
 }
 
+export type ExamFormat = 'multiple_choice' | 'essay';
+
 export interface QuizQuestion {
   id: number;
   question: string;
@@ -67,12 +69,25 @@ export interface QuizQuestion {
   subtopic: string;
 }
 
+export interface EssayQuestion {
+  id: number;
+  question: string;
+  points: number; // Điểm số cho câu này (ví dụ: 2 điểm)
+  guideline?: string; // Gợi ý hướng giải / tư duy sư phạm
+  sampleAnswer: string; // Đáp án mẫu / Lời giải chi tiết
+  rubric?: string; // Biểu điểm chấm chi tiết
+  subtopic?: string; // Chuyên đề / Dạng bài
+}
+
 export interface QuizData {
   title: string;
   topic: string;
   grade?: Grade;
   subject?: Subject;
+  examFormat?: ExamFormat;
+  durationMinutes?: number;
   questions: QuizQuestion[];
+  essayQuestions?: EssayQuestion[];
 }
 
 export interface QuizSubmissionResult {
@@ -85,12 +100,16 @@ export interface QuizSubmissionResult {
   subject: Subject;
   grade: Grade;
   topic: string;
+  examFormat?: ExamFormat;
   score: number; // e.g. 8.0/10
   correctCount: number;
   totalQuestions: number;
   userAnswers: Record<number, string>; // question id -> selected option letter
+  essayAnswers?: Record<number, string>; // question id -> student essay answer
+  essayFeedback?: Record<number, { score: number; comment: string }>;
   weakSubtopics: string[];
   questions: QuizQuestion[];
+  essayQuestions?: EssayQuestion[];
   syncedToSheets?: boolean;
   syncedToFirestore?: boolean;
 }
@@ -137,6 +156,7 @@ export interface SavedBankQuiz {
   creatorName: string;
   creatorRole: UserRole;
   createdAt: number;
+  examFormat?: ExamFormat;
   data: QuizData;
 }
 

@@ -3,6 +3,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 import { GoogleGenAI, Type } from '@google/genai';
+import { DIRECT_GEMINI_API_KEY } from './src/config/aiConfig.js';
 
 dotenv.config();
 
@@ -16,12 +17,12 @@ app.use(express.json({ limit: '25mb' }));
 
 // Initialize GoogleGenAI SDK with required telemetry header
 const getGenAIClient = () => {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
+  const apiKey = process.env.GEMINI_API_KEY || DIRECT_GEMINI_API_KEY;
+  if (!apiKey || !apiKey.trim()) {
     throw new Error('GEMINI_API_KEY is not configured in the environment.');
   }
   return new GoogleGenAI({
-    apiKey,
+    apiKey: apiKey.trim(),
     httpOptions: {
       headers: {
         'User-Agent': 'aistudio-build',
@@ -610,7 +611,11 @@ async function startServer() {
   });
 }
 
-startServer().catch((err) => {
-  console.error('Failed to start server:', err);
-  process.exit(1);
-});
+export default app;
+
+if (!process.env.VERCEL) {
+  startServer().catch((err) => {
+    console.error('Failed to start server:', err);
+    process.exit(1);
+  });
+}

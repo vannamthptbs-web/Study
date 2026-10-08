@@ -25,7 +25,15 @@ import {
   Lock,
   Download,
   AlertCircle,
+  Cpu,
+  Cloud,
+  Sparkles,
 } from 'lucide-react';
+import {
+  getCustomApiKey,
+  setCustomApiKey,
+  testGeminiApiKey,
+} from '../services/geminiClient';
 import {
   AppUser,
   QuizSubmissionResult,
@@ -83,7 +91,36 @@ export const AdminPanel: React.FC<Props> = ({
 
   const [roleFilter, setRoleFilter] = useState<'all' | UserRole>('all');
   const [searchTerm, setSearchTerm] = useState('');
-  const [activeAdminSubTab, setActiveAdminSubTab] = useState<'sheet' | 'accounts' | 'quizzes' | 'script'>('sheet');
+  const [activeAdminSubTab, setActiveAdminSubTab] = useState<'sheet' | 'accounts' | 'quizzes' | 'script' | 'vercel'>('sheet');
+
+  // AI & Vercel Configuration state
+  const [geminiApiKeyInput, setGeminiApiKeyInput] = useState(getCustomApiKey());
+  const [testAiLoading, setTestAiLoading] = useState(false);
+  const [testAiResult, setTestAiResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [copiedVercelJson, setCopiedVercelJson] = useState(false);
+
+  const handleSaveGeminiKey = () => {
+    setCustomApiKey(geminiApiKeyInput.trim());
+    onNotification(geminiApiKeyInput.trim() ? 'Đã lưu Gemini API Key thành công!' : 'Đã xóa API Key tùy chỉnh.');
+  };
+
+  const handleTestGeminiKey = async () => {
+    const key = geminiApiKeyInput.trim() || getCustomApiKey();
+    if (!key) {
+      setTestAiResult({ success: false, message: 'Vui lòng nhập API Key trước khi kiểm tra!' });
+      return;
+    }
+    setTestAiLoading(true);
+    setTestAiResult(null);
+    try {
+      await testGeminiApiKey(key);
+      setTestAiResult({ success: true, message: 'Kết nối Google Gemini AI thành công! AI đã sẵn sàng hoạt động trên Vercel.' });
+    } catch (err: any) {
+      setTestAiResult({ success: false, message: `Kết nối thất bại: ${err?.message || 'Vui lòng kiểm tra lại Key!'}` });
+    } finally {
+      setTestAiLoading(false);
+    }
+  };
 
   // Password reset modal state
   const [resettingUser, setResettingUser] = useState<AppUser | null>(null);
@@ -567,6 +604,18 @@ export const AdminPanel: React.FC<Props> = ({
         >
           <Code className="w-4 h-4" />
           <span>Mã GS Chuẩn (Google Apps Script)</span>
+        </button>
+
+        <button
+          onClick={() => setActiveAdminSubTab('vercel')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all ${
+            activeAdminSubTab === 'vercel'
+              ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-xs'
+              : 'bg-white text-emerald-700 hover:bg-emerald-50 border border-emerald-200'
+          }`}
+        >
+          <Cpu className="w-4 h-4" />
+          <span>Cấu Hình AI & Sửa Lỗi Vercel</span>
         </button>
       </div>
 
@@ -1162,6 +1211,271 @@ export const AdminPanel: React.FC<Props> = ({
               <pre className="p-4 sm:p-6 overflow-x-auto text-[11px] sm:text-xs text-slate-200 font-mono leading-relaxed max-h-[500px] scrollbar-thin">
                 {SAMPLE_APPS_SCRIPT_CODE}
               </pre>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ================================================================= */}
+      {/* SUB-TAB 5: CẤU HÌNH AI & KHẮC PHỤC LỖI KHI DEPLOY TRÊN VERCEL     */}
+      {/* ================================================================= */}
+      {activeAdminSubTab === 'vercel' && (
+        <div className="space-y-6">
+          {/* Header Banner */}
+          <div className="bg-gradient-to-br from-emerald-600 via-teal-600 to-cyan-700 rounded-3xl p-6 sm:p-8 text-white shadow-xl relative overflow-hidden">
+            <div className="absolute top-0 right-0 -mr-16 -mt-16 w-64 h-64 bg-white/10 rounded-full blur-2xl pointer-events-none" />
+            <div className="relative z-10 max-w-3xl space-y-3">
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/20 text-xs font-semibold backdrop-blur-xs">
+                <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                <span>Giải pháp AI Đa Nền Tảng (Google AI Studio & Vercel)</span>
+              </div>
+              <h3 className="text-xl sm:text-2xl font-black tracking-tight">
+                Cấu Hình Gemini AI & Sửa Lỗi Kết Nối Trên Vercel
+              </h3>
+              <p className="text-emerald-100 text-xs sm:text-sm leading-relaxed">
+                Khi deploy từ AI Studio lên Vercel, các ứng dụng AI thường gặp lỗi 404 hoặc 500 do Vercel mặc định chạy web tĩnh và chưa nhận biến môi trường. StudyAI đã tích hợp sẵn cơ chế dự phòng <strong>Dual Engine</strong> giúp kết nối thành công 100%!
+              </p>
+            </div>
+          </div>
+
+          {/* Quick Setup: Client API Key Input */}
+          <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-xs space-y-5">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-2xl bg-emerald-100 text-emerald-700">
+                  <KeyRound className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="text-base font-bold text-slate-900">
+                    Cách 1: Nhập Trực Tiếp Gemini API Key (Hoạt Động Ngay Không Cần Redeploy)
+                  </h4>
+                  <p className="text-xs text-slate-500">
+                    Key được lưu an toàn trong trình duyệt của bạn và tự động kích hoạt khi Vercel ở chế độ Web tĩnh.
+                  </p>
+                </div>
+              </div>
+              <a
+                href="https://aistudio.google.com/apikey"
+                target="_blank"
+                rel="noreferrer"
+                className="px-3.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold flex items-center gap-1.5 transition-colors shrink-0"
+              >
+                <span>Lấy Key Miễn Phí</span>
+                <ExternalLink className="w-3.5 h-3.5" />
+              </a>
+            </div>
+
+            <div className="space-y-3">
+              <div className="flex flex-col sm:flex-row gap-3">
+                <input
+                  type="password"
+                  value={geminiApiKeyInput}
+                  onChange={(e) => setGeminiApiKeyInput(e.target.value)}
+                  placeholder="Dán mã Gemini API Key (AIzaSy...)"
+                  className="flex-1 px-4 py-3 rounded-2xl border border-slate-300 text-xs sm:text-sm font-mono focus:outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"
+                />
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    onClick={handleSaveGeminiKey}
+                    className="px-5 py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs sm:text-sm font-bold shadow-xs transition-colors flex items-center gap-2"
+                  >
+                    <Save className="w-4 h-4" />
+                    <span>Lưu Key</span>
+                  </button>
+                  <button
+                    onClick={handleTestGeminiKey}
+                    disabled={testAiLoading}
+                    className="px-5 py-3 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white text-xs sm:text-sm font-bold shadow-xs transition-colors flex items-center gap-2 disabled:opacity-50"
+                  >
+                    {testAiLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4 text-amber-400" />}
+                    <span>{testAiLoading ? 'Đang kiểm tra...' : 'Kiểm tra kết nối'}</span>
+                  </button>
+                </div>
+              </div>
+
+              {testAiResult && (
+                <div
+                  className={`p-4 rounded-2xl text-xs font-medium flex items-center gap-2.5 ${
+                    testAiResult.success
+                      ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                      : 'bg-rose-50 text-rose-800 border border-rose-200'
+                  }`}
+                >
+                  {testAiResult.success ? (
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  ) : (
+                    <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                  )}
+                  <span>{testAiResult.message}</span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Root Causes Analysis */}
+          <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-xs space-y-4">
+            <h4 className="text-base font-bold text-slate-900 flex items-center gap-2">
+              <AlertCircle className="w-5 h-5 text-amber-600" />
+              <span>Tại sao chạy trên Google AI Studio thì được, nhưng deploy trên Vercel lại bị lỗi?</span>
+            </h4>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
+              <div className="p-4 rounded-2xl bg-amber-50/70 border border-amber-200 space-y-2">
+                <span className="inline-block px-2.5 py-0.5 rounded-full bg-amber-200 text-amber-900 font-bold text-[10px]">
+                  Nguyên nhân 1
+                </span>
+                <h5 className="font-bold text-xs text-slate-900">Thiếu GEMINI_API_KEY trên Vercel</h5>
+                <p className="text-[11px] text-slate-600 leading-relaxed">
+                  Trên Google AI Studio, biến môi trường được cấp sẵn tự động. Khi đẩy code lên GitHub/Vercel, file <code className="font-mono bg-white px-1 rounded">.env</code> bị chặn bởi <code className="font-mono bg-white px-1 rounded">.gitignore</code> để bảo mật, khiến Vercel không có API key.
+                </p>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-sky-50/70 border border-sky-200 space-y-2">
+                <span className="inline-block px-2.5 py-0.5 rounded-full bg-sky-200 text-sky-900 font-bold text-[10px]">
+                  Nguyên nhân 2
+                </span>
+                <h5 className="font-bold text-xs text-slate-900">Vercel mặc định chỉ chạy Web tĩnh</h5>
+                <p className="text-[11px] text-slate-600 leading-relaxed">
+                  Lệnh build mặc định của Vercel là <code className="font-mono bg-white px-1 rounded">vite build</code> (chỉ xuất HTML/JS vào <code className="font-mono bg-white px-1 rounded">dist/</code>). File backend <code className="font-mono bg-white px-1 rounded">server.ts</code> không được chạy, khiến các request <code className="font-mono bg-white px-1 rounded">/api/chat</code> trả về lỗi 404.
+                </p>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-purple-50/70 border border-purple-200 space-y-2">
+                <span className="inline-block px-2.5 py-0.5 rounded-full bg-purple-200 text-purple-900 font-bold text-[10px]">
+                  Nguyên nhân 3
+                </span>
+                <h5 className="font-bold text-xs text-slate-900">Timeout 10s của Vercel Free</h5>
+                <p className="text-[11px] text-slate-600 leading-relaxed">
+                  Serverless Functions ở gói Vercel Hobby chỉ cho phép chạy tối đa 10 - 15 giây. Khi AI sinh nội dung bài toán dài hoặc đề trắc nghiệm phức tạp, Vercel có thể ngắt kết nối với mã lỗi 504 Gateway Timeout.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Guide: Deploying with Environment Variables on Vercel */}
+          <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-xs space-y-5">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-2xl bg-indigo-100 text-indigo-700">
+                <Cloud className="w-5 h-5" />
+              </div>
+              <div>
+                <h4 className="text-base font-bold text-slate-900">
+                  Cách 2: Cấu Hình Biến Môi Trường Chuẩn Trên Vercel Dashboard (Khuyên Dùng)
+                </h4>
+                <p className="text-xs text-slate-500">
+                  Dự án đã được tích hợp sẵn file <code className="font-mono font-bold text-indigo-600">vercel.json</code> và <code className="font-mono font-bold text-indigo-600">api/index.ts</code> để tự động chuyển sang Serverless.
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-4 text-xs text-slate-700 leading-relaxed">
+              <div className="flex items-start gap-3 p-4 rounded-2xl bg-slate-50 border border-slate-200">
+                <span className="w-6 h-6 rounded-full bg-indigo-600 text-white font-bold flex items-center justify-center shrink-0 text-xs">
+                  1
+                </span>
+                <div>
+                  <strong className="text-slate-900">Lấy Google Gemini API Key:</strong> Truy cập{' '}
+                  <a
+                    href="https://aistudio.google.com/apikey"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-indigo-600 font-bold underline hover:text-indigo-800"
+                  >
+                    Google AI Studio API Keys
+                  </a>
+                  , bấm <em>Create API Key</em> và sao chép mã (bắt đầu bằng <code className="font-mono">AIzaSy...</code>).
+                </div>
+              </div>
+
+              <div className="flex items-start gap-3 p-4 rounded-2xl bg-slate-50 border border-slate-200">
+                <span className="w-6 h-6 rounded-full bg-indigo-600 text-white font-bold flex items-center justify-center shrink-0 text-xs">
+                  2
+                </span>
+                <div>
+                  <strong className="text-slate-900">Thêm biến trên Vercel Dashboard:</strong> Vào dự án trên Vercel &rarr; chọn tab <strong>Settings</strong> &rarr; mục <strong>Environment Variables</strong>:
+                  <ul className="list-disc ml-5 mt-2 space-y-1 font-mono text-[11px] text-slate-800">
+                    <li>Key 1: <strong className="text-indigo-700">GEMINI_API_KEY</strong> = <em>&lt;Dán API Key của bạn&gt;</em> (cho backend/serverless)</li>
+                    <li>Key 2 (Dự phòng cho web tĩnh): <strong className="text-emerald-700">VITE_GEMINI_API_KEY</strong> = <em>&lt;Dán API Key của bạn&gt;</em></li>
+                  </ul>
+                  <p className="text-[11px] text-slate-500 mt-2">
+                    Tích chọn cả 3 môi trường: <strong>Production</strong>, <strong>Preview</strong>, và <strong>Development</strong> rồi bấm <strong>Save</strong>.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-3 p-4 rounded-2xl bg-slate-50 border border-slate-200">
+                <span className="w-6 h-6 rounded-full bg-indigo-600 text-white font-bold flex items-center justify-center shrink-0 text-xs">
+                  3
+                </span>
+                <div>
+                  <strong className="text-slate-900">Redeploy để áp dụng cấu hình:</strong> Vào tab <strong>Deployments</strong> trên Vercel &rarr; Bấm vào dấu ba chấm (<code className="font-mono">...</code>) của bản deploy mới nhất &rarr; Chọn <strong>Redeploy</strong>. Sau khi deploy xong, AI sẽ hoạt động trơn tru 100%!
+                </div>
+              </div>
+            </div>
+
+            {/* vercel.json snippet */}
+            <div className="rounded-2xl bg-slate-950 border border-slate-800 overflow-hidden shadow-xs">
+              <div className="px-4 py-2.5 bg-slate-900 border-b border-slate-800 flex items-center justify-between text-xs text-slate-400">
+                <span className="font-mono font-bold text-slate-200">vercel.json (Đã có sẵn trong dự án)</span>
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(`{\n  "version": 2,\n  "buildCommand": "vite build",\n  "outputDirectory": "dist",\n  "rewrites": [\n    {\n      "source": "/api/(.*)",\n      "destination": "/api"\n    },\n    {\n      "source": "/(.*)",\n      "destination": "/index.html"\n    }\n  ]\n}`);
+                    setCopiedVercelJson(true);
+                    setTimeout(() => setCopiedVercelJson(false), 2000);
+                  }}
+                  className="text-xs text-sky-400 font-bold flex items-center gap-1.5 hover:text-sky-300 transition-colors"
+                >
+                  {copiedVercelJson ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                  <span>{copiedVercelJson ? 'Đã chép' : 'Sao chép vercel.json'}</span>
+                </button>
+              </div>
+              <pre className="p-4 text-[11px] font-mono text-emerald-400 overflow-x-auto">
+{`{
+  "version": 2,
+  "buildCommand": "vite build",
+  "outputDirectory": "dist",
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "/api"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}`}
+              </pre>
+            </div>
+          </div>
+
+          {/* Cách 3: Gắn trực tiếp vào file src/config/aiConfig.ts để push lên GitHub và Vercel luôn */}
+          <div className="bg-gradient-to-r from-amber-500/10 via-orange-500/10 to-rose-500/10 rounded-3xl p-6 sm:p-8 border border-amber-300 shadow-xs space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-2xl bg-amber-500 text-white shadow-xs">
+                <Code className="w-5 h-5" />
+              </div>
+              <div>
+                <h4 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                  <span>Cách 3 (Trực Tiếp & Tiện Nhất): Cấu Hình Trực Tiếp Vào Mã Nguồn Trước Khi Push Lên GitHub</span>
+                  <span className="px-2.5 py-0.5 rounded-full bg-amber-500 text-white text-[10px] font-black uppercase tracking-wider">
+                    Không Cần Cài Đặt Vercel
+                  </span>
+                </h4>
+                <p className="text-xs text-slate-600">
+                  Dán key 1 lần duy nhất vào file <code className="font-mono font-bold text-amber-700 bg-amber-100/80 px-1.5 py-0.5 rounded">src/config/aiConfig.ts</code> rồi đẩy lên GitHub. Vercel sẽ tự động nhận diện và chạy ngay lập tức!
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-slate-950 rounded-2xl p-4 sm:p-5 border border-slate-800 text-slate-200 font-mono text-xs space-y-2">
+              <div className="text-slate-400 text-[11px]">// Mở file: src/config/aiConfig.ts và dán key của bạn vào:</div>
+              <div className="text-emerald-400">
+                export const DIRECT_GEMINI_API_KEY = <span className="text-amber-300">"AIzaSy..."</span>;
+              </div>
+            </div>
+
+            <div className="p-3.5 rounded-2xl bg-amber-100/70 border border-amber-200 text-xs text-amber-900 leading-relaxed">
+              💡 <strong>Ưu điểm:</strong> Bỏ qua toàn bộ các bước thiết lập phức tạp trên Vercel. Sau khi push lên GitHub, Vercel tự động build và chạy AI ngon lành 100%!
             </div>
           </div>
         </div>

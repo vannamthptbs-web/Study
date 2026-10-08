@@ -23,6 +23,8 @@ import {
   GraduationCap,
   Users,
   Code,
+  Cpu,
+  Cloud,
 } from 'lucide-react';
 import { ActiveTab, UserProfile } from '../types/study';
 import { DEFAULT_SHEET_URL, getSpreadsheetUrl } from '../services/firebaseWorkspace';
@@ -972,6 +974,73 @@ export const UserGuide: React.FC<Props> = ({ setActiveTab, onOpenAuth, currentUs
                 Không dùng localStorage, sessionStorage hoặc bộ nhớ tạm làm nguồn dữ liệu chính. Toàn bộ tiến trình tuân
                 thủ quy tắc: <strong>ĐỌC ➔ HIỂN THỊ ➔ THÊM/SỬA ➔ LƯU VÀO GOOGLE SHEETS</strong>.
               </p>
+            </div>
+          </div>
+        </section>
+
+        {/* SECTION 9: KHẮC PHỤC LỖI KẾT NỐI AI KHI DEPLOY TRÊN VERCEL */}
+        <section className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-sm space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-2xl bg-teal-100 text-teal-700">
+                <Cpu className="w-6 h-6" />
+              </div>
+              <div>
+                <span className="text-[11px] font-bold uppercase tracking-wider text-teal-600">
+                  Phần 9: Triển Khai & Khắc Phục Sự Cố
+                </span>
+                <h2 className="text-xl sm:text-2xl font-black text-slate-900">
+                  Tại Sao Lỗi Kết Nối AI Trên Vercel & Cách Sửa Triệt Để
+                </h2>
+              </div>
+            </div>
+
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-teal-50 text-teal-700 border border-teal-200 text-xs font-bold">
+              <Cloud className="w-3.5 h-3.5" />
+              <span>Hỗ Trợ Vercel 100%</span>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 text-xs text-amber-900 leading-relaxed space-y-1.5">
+              <div className="font-bold flex items-center gap-2 text-amber-800">
+                <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                <span>Hiện tượng: Trên Google AI Studio chạy bình thường, nhưng deploy lên Vercel lại báo lỗi kết nối AI?</span>
+              </div>
+              <p>
+                <strong>Nguyên nhân:</strong> Khi deploy lên Vercel, Vercel mặc định chỉ build trang web tĩnh (<code className="font-mono bg-white px-1 rounded">vite build</code>) mà không chạy máy chủ Node.js backend. Đồng thời, biến môi trường <code className="font-mono bg-white px-1 rounded">GEMINI_API_KEY</code> không được đẩy lên GitHub vì lý do bảo mật. Khi trình duyệt gọi API AI, Vercel trả về mã lỗi <strong>404</strong> hoặc <strong>500</strong>.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="p-5 rounded-2xl bg-slate-50 border border-slate-200 space-y-3">
+                <div className="flex items-center gap-2 font-bold text-slate-900 text-sm">
+                  <span className="w-6 h-6 rounded-full bg-indigo-600 text-white flex items-center justify-center text-xs">A</span>
+                  <span>Cách 1: Thêm Biến Môi Trường Trên Vercel (Chuẩn)</span>
+                </div>
+                <ol className="list-decimal ml-5 text-xs text-slate-600 space-y-1.5 leading-relaxed">
+                  <li>Lấy Gemini API Key miễn phí từ <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer" className="text-indigo-600 font-bold underline">Google AI Studio</a>.</li>
+                  <li>Mở dự án trên Vercel &rarr; vào <strong>Settings</strong> &rarr; <strong>Environment Variables</strong>.</li>
+                  <li>Thêm 2 biến: <code className="font-mono text-indigo-700 font-bold">GEMINI_API_KEY</code> và <code className="font-mono text-emerald-700 font-bold">VITE_GEMINI_API_KEY</code>.</li>
+                  <li>Vào <strong>Deployments</strong> &rarr; chọn bản deploy mới nhất &rarr; bấm <strong>Redeploy</strong>.</li>
+                </ol>
+              </div>
+
+              <div className="p-5 rounded-2xl bg-slate-50 border border-slate-200 space-y-3">
+                <div className="flex items-center gap-2 font-bold text-slate-900 text-sm">
+                  <span className="w-6 h-6 rounded-full bg-emerald-600 text-white flex items-center justify-center text-xs">B</span>
+                  <span>Cách 2: Nhập Trực Tiếp Trong Mục Quản Trị (Tức Thì)</span>
+                </div>
+                <p className="text-xs text-slate-600 leading-relaxed">
+                  Nếu bạn không muốn redeploy lại trên Vercel:
+                </p>
+                <ol className="list-decimal ml-5 text-xs text-slate-600 space-y-1.5 leading-relaxed">
+                  <li>Đăng nhập tài khoản Quản trị (Admin).</li>
+                  <li>Mở tab <strong>Quản trị</strong> &rarr; chọn mục <strong>Cấu hình AI & Sửa lỗi Vercel</strong>.</li>
+                  <li>Dán Gemini API Key vào ô nhập và bấm <strong>Lưu Key</strong> &rarr; <strong>Kiểm tra kết nối</strong>.</li>
+                  <li>Hệ thống kích hoạt ngay cơ chế <em>Dual Engine</em> để chạy AI từ trình duyệt!</li>
+                </ol>
+              </div>
             </div>
           </div>
         </section>

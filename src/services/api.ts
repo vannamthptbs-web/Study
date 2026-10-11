@@ -6,6 +6,7 @@ import {
   clientGenerateTopicReview,
   clientGenerateQuizFromAI,
   clientGenerateEssayExamFromAI,
+  clientGenerateMixedExamFromAI,
   clientGradeEssayWithAI,
 } from './geminiClient';
 
@@ -278,6 +279,73 @@ export async function generateEssayExamFromAI(
         );
       } catch (clientErr: any) {
         throw new Error(`Lỗi tạo đề tự luận: ${clientErr?.message || 'Không thể tạo đề'}`);
+      }
+    }
+
+    throw new Error(handleVercelHelpMessage(backendError));
+  }
+}
+
+export async function generateMixedExamFromAI(
+  subject: Subject,
+  grade: Grade,
+  topic: string,
+  mcqCount: number = 5,
+  essayCount: number = 2,
+  difficulty: 'easy' | 'medium' | 'hard' = 'medium',
+  files?: UploadedFileItem[],
+  customPrompt?: string,
+  role: UserRole = 'teacher'
+): Promise<QuizData> {
+  const payloadFiles = files?.map((f) => ({
+    name: f.name,
+    mimeType: f.mimeType,
+    data: f.data,
+  }));
+
+  try {
+    const response = await fetch('/api/mixed-exam', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        subject,
+        grade,
+        topic,
+        mcqCount,
+        essayCount,
+        difficulty,
+        files: payloadFiles,
+        customPrompt,
+        role,
+      }),
+    });
+
+    const data = await parseJsonResponse<QuizData>(
+      response,
+      'Lỗi khi tạo đề thi kết hợp TN & TL'
+    );
+    data.examFormat = 'mixed';
+    return data;
+  } catch (backendError: any) {
+    console.warn('Backend /api/mixed-exam issue, attempting client fallback:', backendError?.message);
+
+    const clientKey = getEffectiveApiKey();
+    if (clientKey) {
+      try {
+        return await clientGenerateMixedExamFromAI(
+          clientKey,
+          subject,
+          grade,
+          topic,
+          mcqCount,
+          essayCount,
+          difficulty,
+          files,
+          customPrompt,
+          role
+        );
+      } catch (clientErr: any) {
+        throw new Error(`Lỗi tạo đề kết hợp TN & TL: ${clientErr?.message || 'Không thể tạo đề'}`);
       }
     }
 

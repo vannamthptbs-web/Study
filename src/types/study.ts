@@ -70,7 +70,7 @@ export interface ChatMessage {
   files?: Array<{ name: string; mimeType: string }>;
 }
 
-export type ExamFormat = 'multiple_choice' | 'essay';
+export type ExamFormat = 'multiple_choice' | 'essay' | 'mixed';
 
 export interface QuizQuestion {
   id: number;
@@ -86,8 +86,11 @@ export interface EssayQuestion {
   question: string;
   points: number; // Điểm số cho câu này (ví dụ: 2 điểm)
   guideline?: string; // Gợi ý hướng giải / tư duy sư phạm
+  solutionGuide?: string; // Tương thích alias
   sampleAnswer: string; // Đáp án mẫu / Lời giải chi tiết
   rubric?: string; // Biểu điểm chấm chi tiết
+  scoringRubric?: string[]; // Tương thích alias mảng
+  maxScore?: number; // Tương thích alias
   subtopic?: string; // Chuyên đề / Dạng bài
 }
 

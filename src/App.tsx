@@ -18,6 +18,7 @@ import { ProgressTracker } from './components/ProgressTracker';
 import { AdminPanel } from './components/AdminPanel';
 import { AuthModal } from './components/AuthModal';
 import { FormulaReferenceModal } from './components/FormulaReferenceModal';
+import { QuestionBankModal } from './components/QuestionBankModal';
 import { UserGuide } from './components/UserGuide';
 import {
   getStoredProfile,
@@ -42,6 +43,7 @@ export default function App() {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [formulaModalOpen, setFormulaModalOpen] = useState(false);
+  const [bankModalOpen, setBankModalOpen] = useState(false);
 
   // Google Sheets là nguồn dữ liệu duy nhất: khi mở App hoặc reload, tự động lấy dữ liệu từ Google Sheets
   useEffect(() => {
@@ -175,6 +177,7 @@ export default function App() {
         profile={profile}
         onOpenAuth={() => setAuthModalOpen(true)}
         onOpenFormulas={() => setFormulaModalOpen(true)}
+        onOpenQuestionBank={() => setBankModalOpen(true)}
         onLogout={handleLogout}
       />
 
@@ -197,6 +200,23 @@ export default function App() {
           showToast('Đã chèn công thức chuẩn vào khung trò chuyện! ✨');
         }}
       />
+
+      {/* Question Bank Modal (Phân loại theo Khối, Sửa/Xóa câu hỏi) */}
+      {bankModalOpen && (
+        <QuestionBankModal
+          isOpen={bankModalOpen}
+          onClose={() => setBankModalOpen(false)}
+          currentUser={profile}
+          onSelectQuiz={(selectedQuiz) => {
+            setSelectedGrade(selectedQuiz.grade);
+            setSelectedSubject(selectedQuiz.subject);
+            setActiveTab('quiz');
+            setBankModalOpen(false);
+            showToast(`Đã mở bộ đề: ${selectedQuiz.title}`);
+          }}
+          onNotification={showToast}
+        />
+      )}
 
       {/* Main Container */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">

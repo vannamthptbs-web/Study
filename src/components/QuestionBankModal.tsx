@@ -28,7 +28,7 @@ import {
   EssayQuestion,
   Grade,
   Subject,
-  AppUser,
+  UserProfile,
 } from '../types/study';
 import {
   getBankQuizzes,
@@ -45,10 +45,15 @@ import { FormulaToolbar } from './FormulaToolbar';
 interface Props {
   isOpen: boolean;
   onClose: () => void;
-  currentUser: AppUser;
+  currentUser: UserProfile;
   onSelectQuiz: (quiz: SavedBankQuiz) => void;
   onNotification: (message: string) => void;
 }
+
+// Grade groupings
+const elementaryGrades = ['Lớp 1', 'Lớp 2', 'Lớp 3', 'Lớp 4', 'Lớp 5'];
+const secondaryGrades = ['Lớp 6', 'Lớp 7', 'Lớp 8', 'Lớp 9'];
+const highSchoolGrades = ['Lớp 10', 'Lớp 11', 'Lớp 12'];
 
 export const QuestionBankModal: React.FC<Props> = ({
   isOpen,
@@ -82,23 +87,19 @@ export const QuestionBankModal: React.FC<Props> = ({
 
   // Adding new question state
   const [isAddingQuestion, setIsAddingQuestion] = useState(false);
+  const [addingQuestionType, setAddingQuestionType] = useState<'mcq' | 'essay'>('mcq');
+  const [editingQuestionType, setEditingQuestionType] = useState<'mcq' | 'essay'>('mcq');
 
   // Deletion confirmation state
   const [confirmDeleteQuizId, setConfirmDeleteQuizId] = useState<string | null>(null);
   const [confirmDeleteQIdx, setConfirmDeleteQIdx] = useState<number | null>(null);
-
-  if (!isOpen) return null;
+  const [confirmDeleteQType, setConfirmDeleteQType] = useState<'mcq' | 'essay'>('mcq');
 
   const refreshList = () => {
     setBankList(getBankQuizzes());
   };
 
-  // Grade groupings
-  const elementaryGrades = ['Lớp 1', 'Lớp 2', 'Lớp 3', 'Lớp 4', 'Lớp 5'];
-  const secondaryGrades = ['Lớp 6', 'Lớp 7', 'Lớp 8', 'Lớp 9'];
-  const highSchoolGrades = ['Lớp 10', 'Lớp 11', 'Lớp 12'];
-
-  // Filtered bank list
+  // Filtered bank list (Always call useMemo unconditionally)
   const filteredQuizzes = useMemo(() => {
     return bankList.filter((item) => {
       // Grade filter
@@ -120,11 +121,15 @@ export const QuestionBankModal: React.FC<Props> = ({
       }
 
       // Format filter
-      const isEssay =
-        item.examFormat === 'essay' ||
-        (item.data && Array.isArray(item.data.essayQuestions) && item.data.essayQuestions.length > 0);
-      if (selectedFormatFilter === 'multiple_choice' && isEssay) return false;
+      const hasMcq = Array.isArray(item.data?.questions) && item.data.questions.length > 0;
+      const hasEssay = Array.isArray(item.data?.essayQuestions) && item.data.essayQuestions.length > 0;
+      const isMixed = item.examFormat === 'mixed' || (hasMcq && hasEssay);
+      const isEssay = !isMixed && (item.examFormat === 'essay' || hasEssay);
+      const isMcq = !isMixed && !isEssay;
+
+      if (selectedFormatFilter === 'multiple_choice' && !isMcq) return false;
       if (selectedFormatFilter === 'essay' && !isEssay) return false;
+      if (selectedFormatFilter === 'mixed' && !isMixed) return false;
 
       // Text search
       if (searchQuery.trim()) {
@@ -143,10 +148,13 @@ export const QuestionBankModal: React.FC<Props> = ({
     });
   }, [bankList, selectedGradeFilter, selectedSubjectFilter, selectedFormatFilter, searchQuery]);
 
+  if (!isOpen) return null;
+
   const activeQuiz = bankList.find((b) => b.id === activeQuizId) || null;
-  const isCurrentQuizEssay =
-    activeQuiz?.examFormat === 'essay' ||
-    (activeQuiz?.data && Array.isArray(activeQuiz.data.essayQuestions) && activeQuiz.data.essayQuestions.length > 0);
+  const activeHasMcq = Array.isArray(activeQuiz?.data?.questions) && activeQuiz.data.questions.length > 0;
+  const activeHasEssay = Array.isArray(activeQuiz?.data?.essayQuestions) && activeQuiz.data.essayQuestions.length > 0;
+  const isCurrentQuizMixed = activeQuiz?.examFormat === 'mixed' || (activeHasMcq && activeHasEssay);
+  const isCurrentQuizEssay = !isCurrentQuizMixed && (activeQuiz?.examFormat === 'essay' || activeHasEssay);
 
   // Handle open active quiz in detail
   const handleOpenDetail = (quiz: SavedBankQuiz) => {
@@ -198,12 +206,14 @@ export const QuestionBankModal: React.FC<Props> = ({
   };
 
   // Start editing single question
-  const handleStartEditQuestion = (idx: number) => {
+  const handleStartEditQuestion = (idx: number, type?: 'mcq' | 'essay') => {
     if (!activeQuiz || !activeQuiz.data) return;
+    const targetType = type || (isCurrentQuizEssay ? 'essay' : 'mcq');
+    setEditingQuestionType(targetType);
     setEditingQuestionIdx(idx);
     setIsAddingQuestion(false);
 
-    if (isCurrentQuizEssay) {
+    if (targetType === 'essay') {
       const q = activeQuiz.data.essayQuestions?.[idx];
       if (q) {
         setEditQuestionText(q.question || '');
@@ -228,7 +238,7 @@ export const QuestionBankModal: React.FC<Props> = ({
   const handleSaveQuestion = () => {
     if (!activeQuiz || editingQuestionIdx === null) return;
 
-    if (isCurrentQuizEssay) {
+    if (editingQuestionType === 'essay') {
       const updatedQ: Partial<EssayQuestion> = {
         question: editQuestionText.trim(),
         solutionGuide: editExplanation.trim(),
@@ -236,7 +246,7 @@ export const QuestionBankModal: React.FC<Props> = ({
         maxScore: Number(editMaxScore) || 2.5,
         scoringRubric: editRubric.filter((r) => r.trim().length > 0),
       };
-      updateQuestionInBankQuiz(activeQuiz.id, editingQuestionIdx, updatedQ);
+      updateQuestionInBankQuiz(activeQuiz.id, editingQuestionIdx, updatedQ, 'essay');
     } else {
       const updatedQ: Partial<QuizQuestion> = {
         question: editQuestionText.trim(),
@@ -245,7 +255,7 @@ export const QuestionBankModal: React.FC<Props> = ({
         explanation: editExplanation.trim(),
         subtopic: editSubtopic.trim(),
       };
-      updateQuestionInBankQuiz(activeQuiz.id, editingQuestionIdx, updatedQ);
+      updateQuestionInBankQuiz(activeQuiz.id, editingQuestionIdx, updatedQ, 'mcq');
     }
 
     refreshList();
@@ -254,16 +264,19 @@ export const QuestionBankModal: React.FC<Props> = ({
   };
 
   // Delete single question
-  const handleDeleteQuestion = (idx: number) => {
+  const handleDeleteQuestion = (idx: number, type?: 'mcq' | 'essay') => {
     if (!activeQuiz) return;
-    deleteQuestionFromBankQuiz(activeQuiz.id, idx);
+    const targetType = type || (isCurrentQuizEssay ? 'essay' : 'mcq');
+    deleteQuestionFromBankQuiz(activeQuiz.id, idx, targetType);
     refreshList();
     setConfirmDeleteQIdx(null);
     onNotification(`Đã xóa câu hỏi ${idx + 1} khỏi đề thi!`);
   };
 
   // Start adding new question
-  const handleStartAddQuestion = () => {
+  const handleStartAddQuestion = (type?: 'mcq' | 'essay') => {
+    const targetType = type || (isCurrentQuizEssay ? 'essay' : 'mcq');
+    setAddingQuestionType(targetType);
     setIsAddingQuestion(true);
     setEditingQuestionIdx(null);
     setEditQuestionText('');
@@ -283,16 +296,20 @@ export const QuestionBankModal: React.FC<Props> = ({
       return;
     }
 
-    if (isCurrentQuizEssay) {
+    if (addingQuestionType === 'essay') {
       const newEssayQ: EssayQuestion = {
         id: (activeQuiz.data.essayQuestions?.length || 0) + 1,
         question: editQuestionText.trim(),
-        solutionGuide: editExplanation.trim() || 'Học sinh trình bày đầy đủ các bước giải.',
-        subtopic: editSubtopic.trim() || activeQuiz.topic,
+        points: Number(editMaxScore) || 2.5,
         maxScore: Number(editMaxScore) || 2.5,
+        guideline: editExplanation.trim() || 'Học sinh trình bày đầy đủ các bước giải.',
+        solutionGuide: editExplanation.trim() || 'Học sinh trình bày đầy đủ các bước giải.',
+        sampleAnswer: editExplanation.trim() || 'Học sinh trình bày đầy đủ các bước giải.',
+        rubric: editRubric.filter((r) => r.trim().length > 0).join('; ') || 'Đúng lời giải và phép tính',
+        subtopic: editSubtopic.trim() || activeQuiz.topic,
         scoringRubric: editRubric.filter((r) => r.trim().length > 0),
       };
-      addQuestionToBankQuiz(activeQuiz.id, newEssayQ);
+      addQuestionToBankQuiz(activeQuiz.id, newEssayQ, 'essay');
     } else {
       const newQ: QuizQuestion = {
         id: (activeQuiz.data.questions?.length || 0) + 1,
@@ -302,7 +319,7 @@ export const QuestionBankModal: React.FC<Props> = ({
         explanation: editExplanation.trim() || 'Lời giải chi tiết cho câu hỏi.',
         subtopic: editSubtopic.trim() || activeQuiz.topic,
       };
-      addQuestionToBankQuiz(activeQuiz.id, newQ);
+      addQuestionToBankQuiz(activeQuiz.id, newQ, 'mcq');
     }
 
     refreshList();
@@ -455,6 +472,7 @@ export const QuestionBankModal: React.FC<Props> = ({
                   <option value="all">Tất cả hình thức</option>
                   <option value="multiple_choice">Trắc nghiệm</option>
                   <option value="essay">Tự luận</option>
+                  <option value="mixed">Kết hợp TN & TL (Hỗn hợp)</option>
                 </select>
               </div>
             </div>
@@ -471,12 +489,13 @@ export const QuestionBankModal: React.FC<Props> = ({
                 </div>
               ) : (
                 filteredQuizzes.map((quiz, idx) => {
-                  const isEssay =
-                    quiz.examFormat === 'essay' ||
-                    (quiz.data && Array.isArray(quiz.data.essayQuestions) && quiz.data.essayQuestions.length > 0);
-                  const qCount = isEssay
-                    ? quiz.data?.essayQuestions?.length || 0
-                    : quiz.data?.questions?.length || 0;
+                  const hasMcq = Array.isArray(quiz.data?.questions) && quiz.data.questions.length > 0;
+                  const hasEssay = Array.isArray(quiz.data?.essayQuestions) && quiz.data.essayQuestions.length > 0;
+                  const isMixed = quiz.examFormat === 'mixed' || (hasMcq && hasEssay);
+                  const isEssay = !isMixed && (quiz.examFormat === 'essay' || hasEssay);
+                  const qCount = isMixed
+                    ? `${quiz.data?.questions?.length || 0} TN + ${quiz.data?.essayQuestions?.length || 0} TL`
+                    : `${quiz.data?.questions?.length || quiz.data?.essayQuestions?.length || 0} câu`;
                   const isSelected = activeQuizId === quiz.id;
 
                   return (
@@ -493,13 +512,19 @@ export const QuestionBankModal: React.FC<Props> = ({
                         <span className="font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-100">
                           {quiz.subject} • {quiz.grade}
                         </span>
-                        <span
-                          className={`px-1.5 py-0.5 rounded font-bold ${
-                            isEssay ? 'bg-amber-100 text-amber-800' : 'bg-sky-100 text-sky-800'
-                          }`}
-                        >
-                          {isEssay ? 'Tự luận' : 'Trắc nghiệm'}
-                        </span>
+                        {isMixed ? (
+                          <span className="px-1.5 py-0.5 rounded font-bold bg-purple-100 text-purple-800">
+                            TN + TL
+                          </span>
+                        ) : (
+                          <span
+                            className={`px-1.5 py-0.5 rounded font-bold ${
+                              isEssay ? 'bg-amber-100 text-amber-800' : 'bg-sky-100 text-sky-800'
+                            }`}
+                          >
+                            {isEssay ? 'Tự luận' : 'Trắc nghiệm'}
+                          </span>
+                        )}
                       </div>
 
                       <h4 className="font-bold text-slate-900 text-xs line-clamp-2">
@@ -659,14 +684,15 @@ export const QuestionBankModal: React.FC<Props> = ({
                   <div className="flex items-center justify-between pt-2 border-t border-slate-100">
                     <span className="text-xs font-semibold text-slate-600">
                       Danh sách câu hỏi (
-                      {isCurrentQuizEssay
-                        ? activeQuiz.data?.essayQuestions?.length || 0
-                        : activeQuiz.data?.questions?.length || 0}{' '}
-                      câu):
+                      {isCurrentQuizMixed
+                        ? `${activeQuiz.data?.questions?.length || 0} TN + ${activeQuiz.data?.essayQuestions?.length || 0} TL`
+                        : isCurrentQuizEssay
+                        ? `${activeQuiz.data?.essayQuestions?.length || 0} câu`
+                        : `${activeQuiz.data?.questions?.length || 0} câu`}):
                     </span>
                     <button
                       type="button"
-                      onClick={handleStartAddQuestion}
+                      onClick={() => handleStartAddQuestion()}
                       className="flex items-center gap-1 px-3 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs rounded-lg border border-indigo-200 transition-colors"
                     >
                       <Plus className="w-3.5 h-3.5" />
@@ -683,7 +709,7 @@ export const QuestionBankModal: React.FC<Props> = ({
                       <div className="flex items-center justify-between pb-2 border-b border-indigo-200">
                         <span className="text-xs font-bold text-indigo-900 flex items-center gap-1.5">
                           <Plus className="w-4 h-4" />
-                          Thêm câu hỏi mới vào đề thi ({isCurrentQuizEssay ? 'Tự luận' : 'Trắc nghiệm'})
+                          Thêm câu hỏi mới vào đề thi ({addingQuestionType === 'essay' ? 'Tự luận' : 'Trắc nghiệm'})
                         </span>
                         <button
                           type="button"
@@ -693,6 +719,35 @@ export const QuestionBankModal: React.FC<Props> = ({
                           Hủy bỏ
                         </button>
                       </div>
+
+                      {/* Type switcher for mixed quizzes */}
+                      {isCurrentQuizMixed && (
+                        <div className="flex items-center gap-2 pb-1">
+                          <span className="text-xs font-semibold text-slate-700">Loại câu hỏi:</span>
+                          <button
+                            type="button"
+                            onClick={() => setAddingQuestionType('mcq')}
+                            className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
+                              addingQuestionType === 'mcq'
+                                ? 'bg-sky-600 text-white shadow-xs'
+                                : 'bg-white text-slate-600 border border-slate-200'
+                            }`}
+                          >
+                            Trắc nghiệm (TN)
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setAddingQuestionType('essay')}
+                            className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
+                              addingQuestionType === 'essay'
+                                ? 'bg-amber-600 text-white shadow-xs'
+                                : 'bg-white text-slate-600 border border-slate-200'
+                            }`}
+                          >
+                            Tự luận (TL)
+                          </button>
+                        </div>
+                      )}
 
                       {/* Formula toolbar for inserting symbols */}
                       <FormulaToolbar
@@ -717,7 +772,7 @@ export const QuestionBankModal: React.FC<Props> = ({
                       </div>
 
                       {/* If multiple choice: options A B C D */}
-                      {!isCurrentQuizEssay ? (
+                      {addingQuestionType === 'mcq' ? (
                         <div className="space-y-2">
                           <label className="block text-xs font-bold text-slate-700">
                             4 Phương án lựa chọn & Đáp án đúng:
@@ -784,7 +839,7 @@ export const QuestionBankModal: React.FC<Props> = ({
                       {/* Explanation / Solution Guide */}
                       <div>
                         <label className="block text-xs font-bold text-slate-700 mb-1">
-                          {isCurrentQuizEssay ? 'Hướng dẫn giải chi tiết:' : 'Lời giải chi tiết:'}
+                          {addingQuestionType === 'essay' ? 'Hướng dẫn giải chi tiết:' : 'Lời giải chi tiết:'}
                         </label>
                         <textarea
                           rows={2}
@@ -815,342 +870,386 @@ export const QuestionBankModal: React.FC<Props> = ({
                   )}
 
                   {/* Render questions list */}
-                  {isCurrentQuizEssay ? (
-                    // ESSAY QUESTIONS LIST
-                    (activeQuiz.data?.essayQuestions || []).map((q, qIdx) => {
-                      const isEditing = editingQuestionIdx === qIdx;
-
-                      return (
-                        <div
-                          key={q.id ? `essay-${q.id}-${qIdx}` : `essay-${qIdx}`}
-                          className="p-4 sm:p-5 rounded-2xl bg-white border border-slate-200 space-y-3 shadow-2xs hover:border-slate-300 transition-all"
-                        >
-                          {isEditing ? (
-                            /* EDITING FORM FOR THIS QUESTION */
-                            <div className="space-y-3">
-                              <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-                                <span className="text-xs font-bold text-indigo-700">
-                                  Chỉnh sửa Câu hỏi {qIdx + 1}
-                                </span>
-                                <button
-                                  type="button"
-                                  onClick={() => setEditingQuestionIdx(null)}
-                                  className="text-xs text-slate-400 hover:text-slate-600"
-                                >
-                                  Đóng
-                                </button>
-                              </div>
-
-                              <FormulaToolbar
-                                onInsertSymbol={(sym) => {
-                                  setEditQuestionText((prev) => prev + sym);
-                                }}
-                                compact={true}
-                              />
-
-                              <textarea
-                                rows={3}
-                                value={editQuestionText}
-                                onChange={(e) => setEditQuestionText(e.target.value)}
-                                className="w-full rounded-xl border border-slate-300 p-2.5 text-xs text-slate-800 focus:outline-none focus:border-indigo-500"
-                              />
-
-                              <div className="grid grid-cols-2 gap-2">
-                                <div>
-                                  <label className="block text-[11px] font-bold text-slate-700 mb-0.5">
-                                    Điểm số:
-                                  </label>
-                                  <input
-                                    type="number"
-                                    step="0.25"
-                                    value={editMaxScore}
-                                    onChange={(e) => setEditMaxScore(Number(e.target.value))}
-                                    className="w-full rounded-lg border border-slate-300 px-2 py-1 text-xs"
-                                  />
-                                </div>
-                                <div>
-                                  <label className="block text-[11px] font-bold text-slate-700 mb-0.5">
-                                    Chuyên đề:
-                                  </label>
-                                  <input
-                                    type="text"
-                                    value={editSubtopic}
-                                    onChange={(e) => setEditSubtopic(e.target.value)}
-                                    className="w-full rounded-lg border border-slate-300 px-2 py-1 text-xs"
-                                  />
-                                </div>
-                              </div>
-
-                              <div>
-                                <label className="block text-[11px] font-bold text-slate-700 mb-0.5">
-                                  Hướng dẫn giải:
-                                </label>
-                                <textarea
-                                  rows={2}
-                                  value={editExplanation}
-                                  onChange={(e) => setEditExplanation(e.target.value)}
-                                  className="w-full rounded-xl border border-slate-300 p-2 text-xs text-slate-800"
-                                />
-                              </div>
-
-                              <div className="flex items-center justify-end gap-2 pt-1">
-                                <button
-                                  type="button"
-                                  onClick={() => setEditingQuestionIdx(null)}
-                                  className="px-3 py-1 bg-slate-100 text-slate-600 rounded-lg text-xs font-semibold"
-                                >
-                                  Hủy
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={handleSaveQuestion}
-                                  className="px-3.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold"
-                                >
-                                  Lưu thay đổi
-                                </button>
-                              </div>
-                            </div>
-                          ) : (
-                            /* DISPLAY MODE */
-                            <div>
-                              <div className="flex items-start justify-between gap-2">
-                                <div className="flex items-center gap-2">
-                                  <span className="w-6 h-6 rounded-lg bg-amber-100 text-amber-800 font-extrabold text-xs flex items-center justify-center">
-                                    {qIdx + 1}
-                                  </span>
-                                  <span className="text-xs font-bold text-slate-500">
-                                    ({q.maxScore || 2.5} điểm)
-                                  </span>
-                                  {q.subtopic && (
-                                    <span className="text-[10px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-md font-medium">
-                                      {q.subtopic}
-                                    </span>
-                                  )}
-                                </div>
-
-                                <div className="flex items-center gap-1">
-                                  <button
-                                    type="button"
-                                    onClick={() => handleStartEditQuestion(qIdx)}
-                                    className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
-                                    title="Sửa câu này"
-                                  >
-                                    <Edit3 className="w-3.5 h-3.5" />
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => setConfirmDeleteQIdx(qIdx)}
-                                    className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
-                                    title="Xóa câu này"
-                                  >
-                                    <Trash2 className="w-3.5 h-3.5" />
-                                  </button>
-                                </div>
-                              </div>
-
-                              <div className="mt-2 text-sm text-slate-800 font-medium">
-                                <MarkdownContent content={q.question} compact={true} />
-                              </div>
-
-                              {q.solutionGuide && (
-                                <div className="mt-2 p-2.5 rounded-xl bg-slate-50 border border-slate-100 text-xs text-slate-600">
-                                  <span className="font-bold text-indigo-700 block mb-0.5">
-                                    Hướng dẫn giải:
-                                  </span>
-                                  <MarkdownContent content={q.solutionGuide} compact={true} />
-                                </div>
-                              )}
-                            </div>
-                          )}
+                  {/* PHẦN I: TRẮC NGHIỆM (Hiển thị nếu đề có câu trắc nghiệm hoặc là đề trắc nghiệm) */}
+                  {(isCurrentQuizMixed || !isCurrentQuizEssay) && (
+                    <div className="space-y-3">
+                      {isCurrentQuizMixed && (
+                        <div className="flex items-center justify-between pb-1.5 pt-1 border-b border-sky-200">
+                          <h4 className="text-xs font-bold uppercase tracking-wider text-sky-900 flex items-center gap-1.5">
+                            <span className="w-2.5 h-2.5 rounded-full bg-sky-500"></span>
+                            Phần I: Trắc nghiệm khách quan ({activeQuiz.data?.questions?.length || 0} câu)
+                          </h4>
+                          <button
+                            type="button"
+                            onClick={() => handleStartAddQuestion('mcq')}
+                            className="text-[11px] font-bold text-sky-700 hover:text-sky-900 bg-sky-50 hover:bg-sky-100 px-2.5 py-0.5 rounded-lg border border-sky-200 transition-colors"
+                          >
+                            + Thêm câu TN
+                          </button>
                         </div>
-                      );
-                    })
-                  ) : (
-                    // MULTIPLE CHOICE QUESTIONS LIST
-                    (activeQuiz.data?.questions || []).map((q, qIdx) => {
-                      const isEditing = editingQuestionIdx === qIdx;
+                      )}
 
-                      return (
-                        <div
-                          key={q.id ? `mc-${q.id}-${qIdx}` : `mc-${qIdx}`}
-                          className="p-4 sm:p-5 rounded-2xl bg-white border border-slate-200 space-y-3 shadow-2xs hover:border-slate-300 transition-all"
-                        >
-                          {isEditing ? (
-                            /* EDITING FORM FOR MULTIPLE CHOICE */
-                            <div className="space-y-3">
-                              <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-                                <span className="text-xs font-bold text-indigo-700">
-                                  Chỉnh sửa Câu hỏi {qIdx + 1}
-                                </span>
-                                <button
-                                  type="button"
-                                  onClick={() => setEditingQuestionIdx(null)}
-                                  className="text-xs text-slate-400 hover:text-slate-600"
-                                >
-                                  Đóng
-                                </button>
-                              </div>
+                      {(activeQuiz.data?.questions || []).map((q, qIdx) => {
+                        const isEditing = editingQuestionIdx === qIdx && editingQuestionType === 'mcq';
 
-                              <FormulaToolbar
-                                onInsertSymbol={(sym) => {
-                                  setEditQuestionText((prev) => prev + sym);
-                                }}
-                                compact={true}
-                              />
-
-                              <textarea
-                                rows={3}
-                                value={editQuestionText}
-                                onChange={(e) => setEditQuestionText(e.target.value)}
-                                className="w-full rounded-xl border border-slate-300 p-2.5 text-xs text-slate-800 focus:outline-none focus:border-indigo-500"
-                              />
-
-                              <div className="space-y-1.5">
-                                <label className="block text-[11px] font-bold text-slate-700">
-                                  4 Phương án & Đáp án đúng:
-                                </label>
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                  {['A', 'B', 'C', 'D'].map((letter, optIdx) => (
-                                    <div key={letter} className="flex items-center gap-1.5">
-                                      <button
-                                        type="button"
-                                        onClick={() => setEditCorrectAnswer(letter)}
-                                        className={`w-6 h-6 rounded-md font-bold text-xs shrink-0 flex items-center justify-center border transition-all ${
-                                          editCorrectAnswer === letter
-                                            ? 'bg-emerald-600 text-white border-emerald-600'
-                                            : 'bg-white text-slate-700 border-slate-300'
-                                        }`}
-                                      >
-                                        {letter}
-                                      </button>
-                                      <input
-                                        type="text"
-                                        value={editOptions[optIdx] || ''}
-                                        onChange={(e) => {
-                                          const next = [...editOptions];
-                                          next[optIdx] = e.target.value;
-                                          setEditOptions(next);
-                                        }}
-                                        className="flex-1 rounded-lg border border-slate-300 px-2 py-1 text-xs text-slate-800"
-                                      />
-                                    </div>
-                                  ))}
-                                </div>
-                              </div>
-
-                              <div>
-                                <label className="block text-[11px] font-bold text-slate-700 mb-0.5">
-                                  Lời giải chi tiết:
-                                </label>
-                                <textarea
-                                  rows={2}
-                                  value={editExplanation}
-                                  onChange={(e) => setEditExplanation(e.target.value)}
-                                  className="w-full rounded-xl border border-slate-300 p-2 text-xs text-slate-800"
-                                />
-                              </div>
-
-                              <div className="flex items-center justify-end gap-2 pt-1">
-                                <button
-                                  type="button"
-                                  onClick={() => setEditingQuestionIdx(null)}
-                                  className="px-3 py-1 bg-slate-100 text-slate-600 rounded-lg text-xs font-semibold"
-                                >
-                                  Hủy
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={handleSaveQuestion}
-                                  className="px-3.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold"
-                                >
-                                  Lưu thay đổi
-                                </button>
-                              </div>
-                            </div>
-                          ) : (
-                            /* DISPLAY MODE FOR MULTIPLE CHOICE */
-                            <div>
-                              <div className="flex items-start justify-between gap-2">
-                                <div className="flex items-center gap-2">
-                                  <span className="w-6 h-6 rounded-lg bg-indigo-100 text-indigo-800 font-extrabold text-xs flex items-center justify-center">
-                                    {qIdx + 1}
+                        return (
+                          <div
+                            key={q.id ? `mc-${q.id}-${qIdx}` : `mc-${qIdx}`}
+                            className="p-4 sm:p-5 rounded-2xl bg-white border border-slate-200 space-y-3 shadow-2xs hover:border-slate-300 transition-all"
+                          >
+                            {isEditing ? (
+                              /* EDITING FORM FOR MULTIPLE CHOICE */
+                              <div className="space-y-3">
+                                <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                                  <span className="text-xs font-bold text-indigo-700">
+                                    Chỉnh sửa Câu hỏi Trắc nghiệm {qIdx + 1}
                                   </span>
-                                  {q.subtopic && (
-                                    <span className="text-[10px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-md font-medium">
-                                      {q.subtopic}
-                                    </span>
-                                  )}
-                                </div>
-
-                                <div className="flex items-center gap-1">
                                   <button
                                     type="button"
-                                    onClick={() => handleStartEditQuestion(qIdx)}
-                                    className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
-                                    title="Sửa câu này"
+                                    onClick={() => setEditingQuestionIdx(null)}
+                                    className="text-xs text-slate-400 hover:text-slate-600"
                                   >
-                                    <Edit3 className="w-3.5 h-3.5" />
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => setConfirmDeleteQIdx(qIdx)}
-                                    className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
-                                    title="Xóa câu này"
-                                  >
-                                    <Trash2 className="w-3.5 h-3.5" />
+                                    Đóng
                                   </button>
                                 </div>
-                              </div>
 
-                              <div className="mt-2 text-sm text-slate-800 font-medium">
-                                <MarkdownContent content={q.question} compact={true} />
-                              </div>
+                                <FormulaToolbar
+                                  onInsertSymbol={(sym) => {
+                                    setEditQuestionText((prev) => prev + sym);
+                                  }}
+                                  compact={true}
+                                />
 
-                              {/* 4 options display */}
-                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-3">
-                                {(q.options || []).map((opt, oIdx) => {
-                                  const letter = ['A', 'B', 'C', 'D'][oIdx];
-                                  const isCorrect = (q.correctAnswer || '').trim().toUpperCase() === letter;
+                                <textarea
+                                  rows={3}
+                                  value={editQuestionText}
+                                  onChange={(e) => setEditQuestionText(e.target.value)}
+                                  className="w-full rounded-xl border border-slate-300 p-2.5 text-xs text-slate-800 focus:outline-none focus:border-indigo-500"
+                                />
 
-                                  return (
-                                    <div
-                                      key={oIdx}
-                                      className={`p-2.5 rounded-xl border text-xs flex items-start gap-2 ${
-                                        isCorrect
-                                          ? 'bg-emerald-50 border-emerald-400 text-emerald-950 font-semibold'
-                                          : 'bg-slate-50 border-slate-200 text-slate-700'
-                                      }`}
-                                    >
-                                      <span
-                                        className={`w-5 h-5 rounded-md font-bold text-[11px] flex items-center justify-center shrink-0 ${
-                                          isCorrect
-                                            ? 'bg-emerald-600 text-white'
-                                            : 'bg-white text-slate-600 border border-slate-200'
-                                        }`}
-                                      >
-                                        {letter}
-                                      </span>
-                                      <div className="flex-1 mt-0.5">
-                                        <MarkdownContent content={opt} compact={true} />
+                                <div className="space-y-1.5">
+                                  <label className="block text-[11px] font-bold text-slate-700">
+                                    4 Phương án & Đáp án đúng:
+                                  </label>
+                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                    {['A', 'B', 'C', 'D'].map((letter, optIdx) => (
+                                      <div key={letter} className="flex items-center gap-1.5">
+                                        <button
+                                          type="button"
+                                          onClick={() => setEditCorrectAnswer(letter)}
+                                          className={`w-6 h-6 rounded-md font-bold text-xs shrink-0 flex items-center justify-center border transition-all ${
+                                            editCorrectAnswer === letter
+                                              ? 'bg-emerald-600 text-white border-emerald-600'
+                                              : 'bg-white text-slate-700 border-slate-300'
+                                          }`}
+                                        >
+                                          {letter}
+                                        </button>
+                                        <input
+                                          type="text"
+                                          value={editOptions[optIdx] || ''}
+                                          onChange={(e) => {
+                                            const next = [...editOptions];
+                                            next[optIdx] = e.target.value;
+                                            setEditOptions(next);
+                                          }}
+                                          className="flex-1 rounded-lg border border-slate-300 px-2 py-1 text-xs text-slate-800"
+                                        />
                                       </div>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-
-                              {q.explanation && (
-                                <div className="mt-2 p-2.5 rounded-xl bg-slate-50 border border-slate-100 text-xs text-slate-600">
-                                  <span className="font-bold text-indigo-700 block mb-0.5">
-                                    Lời giải:
-                                  </span>
-                                  <MarkdownContent content={q.explanation} compact={true} />
+                                    ))}
+                                  </div>
                                 </div>
-                              )}
-                            </div>
-                          )}
+
+                                <div>
+                                  <label className="block text-[11px] font-bold text-slate-700 mb-0.5">
+                                    Lời giải chi tiết:
+                                  </label>
+                                  <textarea
+                                    rows={2}
+                                    value={editExplanation}
+                                    onChange={(e) => setEditExplanation(e.target.value)}
+                                    className="w-full rounded-xl border border-slate-300 p-2 text-xs text-slate-800"
+                                  />
+                                </div>
+
+                                <div className="flex items-center justify-end gap-2 pt-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => setEditingQuestionIdx(null)}
+                                    className="px-3 py-1 bg-slate-100 text-slate-600 rounded-lg text-xs font-semibold"
+                                  >
+                                    Hủy
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={handleSaveQuestion}
+                                    className="px-3.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold"
+                                  >
+                                    Lưu thay đổi
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              /* DISPLAY MODE FOR MULTIPLE CHOICE */
+                              <div>
+                                <div className="flex items-start justify-between gap-2">
+                                  <div className="flex items-center gap-2">
+                                    <span className="w-6 h-6 rounded-lg bg-indigo-100 text-indigo-800 font-extrabold text-xs flex items-center justify-center">
+                                      {qIdx + 1}
+                                    </span>
+                                    {q.subtopic && (
+                                      <span className="text-[10px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-md font-medium">
+                                        {q.subtopic}
+                                      </span>
+                                    )}
+                                  </div>
+
+                                  <div className="flex items-center gap-1">
+                                    <button
+                                      type="button"
+                                      onClick={() => handleStartEditQuestion(qIdx, 'mcq')}
+                                      className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                                      title="Sửa câu này"
+                                    >
+                                      <Edit3 className="w-3.5 h-3.5" />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setConfirmDeleteQIdx(qIdx);
+                                        setConfirmDeleteQType('mcq');
+                                      }}
+                                      className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                                      title="Xóa câu này"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  </div>
+                                </div>
+
+                                <div className="mt-2 text-sm text-slate-800 font-medium">
+                                  <MarkdownContent content={q.question} compact={true} />
+                                </div>
+
+                                {/* 4 options display */}
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-3">
+                                  {(q.options || []).map((opt, oIdx) => {
+                                    const letter = ['A', 'B', 'C', 'D'][oIdx];
+                                    const isCorrect = (q.correctAnswer || '').trim().toUpperCase() === letter;
+
+                                    return (
+                                      <div
+                                        key={oIdx}
+                                        className={`p-2.5 rounded-xl border text-xs flex items-start gap-2 ${
+                                          isCorrect
+                                            ? 'bg-emerald-50 border-emerald-400 text-emerald-950 font-semibold'
+                                            : 'bg-slate-50 border-slate-200 text-slate-700'
+                                        }`}
+                                      >
+                                        <span
+                                          className={`w-5 h-5 rounded-md font-bold text-[11px] flex items-center justify-center shrink-0 ${
+                                            isCorrect
+                                              ? 'bg-emerald-600 text-white'
+                                              : 'bg-white text-slate-600 border border-slate-200'
+                                          }`}
+                                        >
+                                          {letter}
+                                        </span>
+                                        <div className="flex-1 mt-0.5">
+                                          <MarkdownContent content={opt} compact={true} />
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+
+                                {q.explanation && (
+                                  <div className="mt-2 p-2.5 rounded-xl bg-slate-50 border border-slate-100 text-xs text-slate-600">
+                                    <span className="font-bold text-indigo-700 block mb-0.5">
+                                      Lời giải:
+                                    </span>
+                                    <MarkdownContent content={q.explanation} compact={true} />
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* PHẦN II: TỰ LUẬN (Hiển thị nếu đề có câu tự luận hoặc là đề tự luận) */}
+                  {(isCurrentQuizMixed || isCurrentQuizEssay) && (
+                    <div className="space-y-3">
+                      {isCurrentQuizMixed && (
+                        <div className="flex items-center justify-between pb-1.5 pt-3 border-b border-amber-200">
+                          <h4 className="text-xs font-bold uppercase tracking-wider text-amber-900 flex items-center gap-1.5">
+                            <span className="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
+                            Phần II: Tự luận ({activeQuiz.data?.essayQuestions?.length || 0} câu)
+                          </h4>
+                          <button
+                            type="button"
+                            onClick={() => handleStartAddQuestion('essay')}
+                            className="text-[11px] font-bold text-amber-700 hover:text-amber-900 bg-amber-50 hover:bg-amber-100 px-2.5 py-0.5 rounded-lg border border-amber-200 transition-colors"
+                          >
+                            + Thêm câu TL
+                          </button>
                         </div>
-                      );
-                    })
+                      )}
+
+                      {(activeQuiz.data?.essayQuestions || []).map((q, qIdx) => {
+                        const isEditing = editingQuestionIdx === qIdx && editingQuestionType === 'essay';
+
+                        return (
+                          <div
+                            key={q.id ? `essay-${q.id}-${qIdx}` : `essay-${qIdx}`}
+                            className="p-4 sm:p-5 rounded-2xl bg-white border border-slate-200 space-y-3 shadow-2xs hover:border-slate-300 transition-all"
+                          >
+                            {isEditing ? (
+                              /* EDITING FORM FOR ESSAY */
+                              <div className="space-y-3">
+                                <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                                  <span className="text-xs font-bold text-indigo-700">
+                                    Chỉnh sửa Câu hỏi Tự luận {qIdx + 1}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => setEditingQuestionIdx(null)}
+                                    className="text-xs text-slate-400 hover:text-slate-600"
+                                  >
+                                    Đóng
+                                  </button>
+                                </div>
+
+                                <FormulaToolbar
+                                  onInsertSymbol={(sym) => {
+                                    setEditQuestionText((prev) => prev + sym);
+                                  }}
+                                  compact={true}
+                                />
+
+                                <textarea
+                                  rows={3}
+                                  value={editQuestionText}
+                                  onChange={(e) => setEditQuestionText(e.target.value)}
+                                  className="w-full rounded-xl border border-slate-300 p-2.5 text-xs text-slate-800 focus:outline-none focus:border-indigo-500"
+                                />
+
+                                <div className="grid grid-cols-2 gap-2">
+                                  <div>
+                                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">
+                                      Điểm số:
+                                    </label>
+                                    <input
+                                      type="number"
+                                      step="0.25"
+                                      value={editMaxScore}
+                                      onChange={(e) => setEditMaxScore(Number(e.target.value))}
+                                      className="w-full rounded-lg border border-slate-300 px-2 py-1 text-xs"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">
+                                      Chuyên đề:
+                                    </label>
+                                    <input
+                                      type="text"
+                                      value={editSubtopic}
+                                      onChange={(e) => setEditSubtopic(e.target.value)}
+                                      className="w-full rounded-lg border border-slate-300 px-2 py-1 text-xs"
+                                    />
+                                  </div>
+                                </div>
+
+                                <div>
+                                  <label className="block text-[11px] font-bold text-slate-700 mb-0.5">
+                                    Hướng dẫn giải:
+                                  </label>
+                                  <textarea
+                                    rows={2}
+                                    value={editExplanation}
+                                    onChange={(e) => setEditExplanation(e.target.value)}
+                                    className="w-full rounded-xl border border-slate-300 p-2 text-xs text-slate-800"
+                                  />
+                                </div>
+
+                                <div className="flex items-center justify-end gap-2 pt-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => setEditingQuestionIdx(null)}
+                                    className="px-3 py-1 bg-slate-100 text-slate-600 rounded-lg text-xs font-semibold"
+                                  >
+                                    Hủy
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={handleSaveQuestion}
+                                    className="px-3.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold"
+                                  >
+                                    Lưu thay đổi
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              /* DISPLAY MODE FOR ESSAY */
+                              <div>
+                                <div className="flex items-start justify-between gap-2">
+                                  <div className="flex items-center gap-2">
+                                    <span className="w-6 h-6 rounded-lg bg-amber-100 text-amber-800 font-extrabold text-xs flex items-center justify-center">
+                                      {qIdx + 1}
+                                    </span>
+                                    <span className="text-xs font-bold text-slate-500">
+                                      ({q.maxScore || 2.5} điểm)
+                                    </span>
+                                    {q.subtopic && (
+                                      <span className="text-[10px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-md font-medium">
+                                        {q.subtopic}
+                                      </span>
+                                    )}
+                                  </div>
+
+                                  <div className="flex items-center gap-1">
+                                    <button
+                                      type="button"
+                                      onClick={() => handleStartEditQuestion(qIdx, 'essay')}
+                                      className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                                      title="Sửa câu này"
+                                    >
+                                      <Edit3 className="w-3.5 h-3.5" />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setConfirmDeleteQIdx(qIdx);
+                                        setConfirmDeleteQType('essay');
+                                      }}
+                                      className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                                      title="Xóa câu này"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  </div>
+                                </div>
+
+                                <div className="mt-2 text-sm text-slate-800 font-medium">
+                                  <MarkdownContent content={q.question} compact={true} />
+                                </div>
+
+                                {q.solutionGuide && (
+                                  <div className="mt-2 p-2.5 rounded-xl bg-slate-50 border border-slate-100 text-xs text-slate-600">
+                                    <span className="font-bold text-indigo-700 block mb-0.5">
+                                      Hướng dẫn giải:
+                                    </span>
+                                    <MarkdownContent content={q.solutionGuide} compact={true} />
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
                   )}
                 </div>
               </div>
@@ -1199,7 +1298,7 @@ export const QuestionBankModal: React.FC<Props> = ({
                 <AlertTriangle className="w-5 h-5" />
               </div>
               <h4 className="text-sm font-bold text-center text-slate-900">
-                Xác nhận xóa câu hỏi {confirmDeleteQIdx + 1}?
+                Xác nhận xóa câu hỏi {confirmDeleteQIdx + 1} ({confirmDeleteQType === 'essay' ? 'Tự luận' : 'Trắc nghiệm'})?
               </h4>
               <p className="text-xs text-center text-slate-500">
                 Câu hỏi này sẽ được loại bỏ khỏi đề thi và các câu còn lại sẽ được đánh số lại.
@@ -1214,7 +1313,7 @@ export const QuestionBankModal: React.FC<Props> = ({
                 </button>
                 <button
                   type="button"
-                  onClick={() => handleDeleteQuestion(confirmDeleteQIdx)}
+                  onClick={() => handleDeleteQuestion(confirmDeleteQIdx, confirmDeleteQType)}
                   className="flex-1 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-xs"
                 >
                   Xóa câu này

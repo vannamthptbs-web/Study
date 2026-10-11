@@ -1,9 +1,11 @@
-import express, { Request, Response } from 'express';
+import express from 'express';
+import type { Request, Response } from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 import { GoogleGenAI, Type } from '@google/genai';
-import { DIRECT_GEMINI_API_KEY } from './src/config/aiConfig.js';
+
+const DIRECT_GEMINI_API_KEY = process.env.DIRECT_GEMINI_API_KEY || '';
 
 dotenv.config();
 
@@ -599,6 +601,125 @@ YÊU CẦU ĐỐI VỚI ĐỀ THI TỰ LUẬN TIỂU HỌC:
 
     res.status(500).json({
       error: formatErrorMessage(error, 'Lỗi khi tạo đề thi tự luận.'),
+    });
+  }
+});
+
+// API 4.2.2: Tạo bộ đề thi kết hợp Trắc nghiệm (TN) và Tự luận (TL) theo lựa chọn của Giáo viên
+app.post('/api/mixed-exam', async (req: Request, res: Response) => {
+  try {
+    const {
+      subject,
+      grade,
+      topic,
+      mcqCount = 5,
+      essayCount = 2,
+      difficulty = 'medium',
+      files,
+      customPrompt,
+      role = 'teacher',
+    } = req.body;
+
+    const hasTopic = topic && typeof topic === 'string' && topic.trim().length > 0;
+    const hasFiles = files && Array.isArray(files) && files.length > 0;
+
+    if (!hasTopic && !hasFiles) {
+      res.status(400).json({ error: 'Vui lòng cung cấp chủ đề hoặc tải tệp tài liệu/ảnh chụp.' });
+      return;
+    }
+
+    const ai = getGenAIClient();
+    const safeMcqCount = Math.min(Math.max(Number(mcqCount) || 0, 0), 20);
+    const safeEssayCount = Math.min(Math.max(Number(essayCount) || 0, 0), 10);
+
+    const promptText = `Bạn là chuyên gia sư phạm Việt Nam, chuyên biên soạn đề kiểm tra toàn diện kết hợp cả TRẮC NGHIỆM (TN) và TỰ LUẬN (TL) bám sát SGK (Bộ GD&ĐT).
+- Đối tượng: ${role === 'teacher' ? 'Thầy/Cô giáo đang ra đề thi' : 'Học sinh ôn tập toàn diện'}
+- Khối lớp: ${grade || 'Lớp 4'}
+- Môn học: ${subject || 'Toán'}
+- Chủ đề: "${topic || 'Theo tài liệu/hình ảnh đính kèm'}"
+- CẤU TRÚC ĐỀ THI YÊU CẦU:
+  + Phần 1 - Trắc nghiệm (TN): Đúng ${safeMcqCount} câu hỏi trắc nghiệm khách quan 4 lựa chọn (A, B, C, D).
+  + Phần 2 - Tự luận (TL): Đúng ${safeEssayCount} câu hỏi/bài toán tự luận có chia điểm (tổng điểm tự luận phân bổ hợp lý).
+- Mức độ: ${difficulty === 'easy' ? 'Nhận biết - Thông hiểu' : difficulty === 'hard' ? 'Vận dụng nâng cao' : 'Thông hiểu - Vận dụng'}
+${customPrompt ? `- Ghi chú thêm từ Giáo viên: ${customPrompt}` : ''}
+
+YÊU CẦU BẮT BUỘC:
+1. Mọi công thức toán học, biểu thức, phân số, đơn vị đo trong đề bài, đáp án và lời giải PHẢI viết bằng LaTeX chuẩn nằm trong cặp dấu $...$ (ví dụ: "$15 + 8 = 23$", "$\\frac{1}{2}$", "$S = a \\times b$", "$45\\text{ m}^2$").
+2. Phần Trắc nghiệm (questions): 4 lựa chọn A, B, C, D; correctAnswer chỉ là "A", "B", "C" hoặc "D"; explanation phân tích chi tiết.
+3. Phần Tự luận (essayQuestions): có question, points, guideline, sampleAnswer và rubric rõ ràng.`;
+
+    const parts: any[] = [];
+    const fileParts = buildFileParts(files);
+    if (fileParts.length > 0) {
+      parts.push(...fileParts);
+    }
+    parts.push({ text: promptText });
+
+    const response = await generateWithModelFallback((model) =>
+      ai.models.generateContent({
+        model,
+        contents: { parts },
+        config: {
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              title: { type: Type.STRING, description: 'Tiêu đề đề thi' },
+              topic: { type: Type.STRING, description: 'Chủ đề' },
+              grade: { type: Type.STRING, description: 'Khối lớp' },
+              subject: { type: Type.STRING, description: 'Môn học' },
+              durationMinutes: { type: Type.INTEGER, description: 'Thời gian làm bài (phút)' },
+              questions: {
+                type: Type.ARRAY,
+                description: 'Danh sách các câu trắc nghiệm (TN)',
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    id: { type: Type.INTEGER },
+                    question: { type: Type.STRING },
+                    options: {
+                      type: Type.ARRAY,
+                      items: { type: Type.STRING },
+                    },
+                    correctAnswer: { type: Type.STRING },
+                    explanation: { type: Type.STRING },
+                    subtopic: { type: Type.STRING },
+                  },
+                  required: ['id', 'question', 'options', 'correctAnswer', 'explanation', 'subtopic'],
+                },
+              },
+              essayQuestions: {
+                type: Type.ARRAY,
+                description: 'Danh sách các câu tự luận (TL)',
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    id: { type: Type.INTEGER },
+                    question: { type: Type.STRING },
+                    points: { type: Type.NUMBER },
+                    guideline: { type: Type.STRING },
+                    sampleAnswer: { type: Type.STRING },
+                    rubric: { type: Type.STRING },
+                    subtopic: { type: Type.STRING },
+                  },
+                  required: ['id', 'question', 'points', 'sampleAnswer', 'rubric'],
+                },
+              },
+            },
+            required: ['title', 'topic', 'questions', 'essayQuestions'],
+          },
+        },
+      })
+    );
+
+    const raw = response.text || '{}';
+    const parsed = JSON.parse(raw);
+    parsed.examFormat = 'mixed';
+    res.json(parsed);
+  } catch (error: any) {
+    console.warn('Lỗi API /api/mixed-exam:', error?.message);
+    res.status(500).json({
+      error: formatErrorMessage(error, 'Lỗi khi tạo đề thi kết hợp TN & TL.'),
     });
   }
 });

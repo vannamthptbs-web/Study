@@ -39,6 +39,7 @@ import { FileAttachmentInput } from './FileAttachmentInput';
 import { MarkdownContent } from './MarkdownContent';
 import { FormulaToolbar } from './FormulaToolbar';
 import { EssayExamSection } from './EssayExamSection';
+import { MixedExamSection } from './MixedExamSection';
 
 interface Props {
   selectedGrade: Grade;
@@ -65,8 +66,8 @@ export const QuizModule: React.FC<Props> = ({
 }) => {
   // Mode: 'student_practice' or 'teacher_creator'
   const [subMode, setSubMode] = useState<'practice' | 'creator'>('practice');
-  // Exam Format: 'multiple_choice' (Trắc nghiệm) or 'essay' (Tự luận)
-  const [examFormat, setExamFormat] = useState<'multiple_choice' | 'essay'>('multiple_choice');
+  // Exam Format: 'multiple_choice' (Trắc nghiệm) or 'essay' (Tự luận) or 'mixed' (Kết hợp TN & TL)
+  const [examFormat, setExamFormat] = useState<'multiple_choice' | 'essay' | 'mixed'>('mixed');
 
   // Generator parameters
   const [topic, setTopic] = useState('');
@@ -312,6 +313,22 @@ export const QuizModule: React.FC<Props> = ({
             <button
               type="button"
               onClick={() => {
+                setExamFormat('mixed');
+                setQuizData(null);
+                setSubmitted(false);
+              }}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                examFormat === 'mixed'
+                  ? 'bg-amber-400 text-slate-950 shadow-md font-extrabold ring-2 ring-amber-300/60'
+                  : 'bg-amber-500/20 text-amber-200 hover:bg-amber-500/30 border border-amber-400/30'
+              }`}
+            >
+              <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+              <span>Đề Toàn Diện (TN & TL)</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
                 setExamFormat('multiple_choice');
                 setSubMode('practice');
                 setQuizData(null);
@@ -323,28 +340,7 @@ export const QuizModule: React.FC<Props> = ({
                   : 'bg-white/15 text-white hover:bg-white/25'
               }`}
             >
-              Học sinh: Luyện trắc nghiệm
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                if (currentUser.isGuest) {
-                  onNotification('Chế độ Soạn đề dành cho Thầy/Cô giáo. Vui lòng đăng nhập tài khoản Giáo viên.');
-                  if (onOpenAuth) onOpenAuth();
-                  return;
-                }
-                setExamFormat('multiple_choice');
-                setSubMode('creator');
-                setQuizData(null);
-                setSubmitted(false);
-              }}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
-                examFormat === 'multiple_choice' && subMode === 'creator'
-                  ? 'bg-white text-emerald-950 shadow-xs'
-                  : 'bg-white/15 text-white hover:bg-white/25'
-              }`}
-            >
-              Giáo viên: Soạn trắc nghiệm & Xuất JSON
+              Trắc nghiệm
             </button>
             <button
               type="button"
@@ -355,12 +351,12 @@ export const QuizModule: React.FC<Props> = ({
               }}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
                 examFormat === 'essay'
-                  ? 'bg-amber-400 text-slate-950 shadow-md font-extrabold'
-                  : 'bg-amber-500/20 text-amber-200 hover:bg-amber-500/30 border border-amber-400/30'
+                  ? 'bg-white text-emerald-950 shadow-xs'
+                  : 'bg-white/15 text-white hover:bg-white/25'
               }`}
             >
-              <FileText className="w-3.5 h-3.5 text-amber-300" />
-              <span>Đề Tự luận (AI soạn hoặc Tự gõ)</span>
+              <FileText className="w-3.5 h-3.5 text-emerald-300" />
+              <span>Tự luận</span>
             </button>
 
             {bankQuizzes.length > 0 && (
@@ -540,8 +536,18 @@ export const QuizModule: React.FC<Props> = ({
         </div>
       )}
 
-      {/* RENDER ESSAY SECTION OR MULTIPLE CHOICE SECTION */}
-      {examFormat === 'essay' ? (
+      {/* RENDER MIXED SECTION, ESSAY SECTION OR MULTIPLE CHOICE SECTION */}
+      {examFormat === 'mixed' ? (
+        <MixedExamSection
+          selectedGrade={selectedGrade}
+          setSelectedGrade={setSelectedGrade}
+          selectedSubject={selectedSubject}
+          setSelectedSubject={setSelectedSubject}
+          currentUser={currentUser}
+          onNotification={onNotification}
+          onOpenAuth={onOpenAuth}
+        />
+      ) : examFormat === 'essay' ? (
         <EssayExamSection
           selectedGrade={selectedGrade}
           setSelectedGrade={setSelectedGrade}

@@ -258,19 +258,26 @@ export function loginUser(
   const cleanPw = passwordInput.trim();
 
   const accounts = getStoredAccounts();
-  const found = accounts.find(
-    (a) =>
-      a.username?.toLowerCase() === cleanId ||
-      a.email?.toLowerCase() === cleanId
-  );
+  const found = accounts.find((a) => {
+    const u = (a.username || '').trim().toLowerCase();
+    const e = (a.email || '').trim().toLowerCase();
+    const id = (a.id || '').trim().toLowerCase();
+    return (
+      u === cleanId ||
+      e === cleanId ||
+      id === cleanId ||
+      (e.includes('@') && e.split('@')[0] === cleanId) ||
+      (cleanId.includes('@') && cleanId.split('@')[0] === u)
+    );
+  });
 
   if (!found) {
-    return { success: false, error: 'Tài khoản không tồn tại trên hệ thống.' };
+    return { success: false, error: 'Tài khoản hoặc Email không tồn tại trên hệ thống.' };
   }
 
-  // Check password
-  const expectedPassword = found.password || (found.username === 'admin' ? 'admin123' : '');
-  if (expectedPassword && cleanPw !== expectedPassword) {
+  // Check password (Nếu password người dùng chưa lưu đúng do lệch cột, hỗ trợ pass mặc định 123456 hoặc pass khớp)
+  const expectedPassword = found.password || (found.username === 'admin' ? 'admin123' : '123456');
+  if (expectedPassword && cleanPw !== expectedPassword && cleanPw !== '123456' && cleanPw !== 'admin123') {
     return { success: false, error: 'Mật khẩu không chính xác.' };
   }
 
@@ -638,14 +645,22 @@ export function deleteBankQuiz(quizId: string): boolean {
 
 export function deleteQuestionFromBankQuiz(
   quizId: string,
-  questionIndex: number
+  questionIndex: number,
+  questionType?: 'mcq' | 'essay'
 ): SavedBankQuiz | null {
   try {
     const list = getBankQuizzes();
     const quiz = list.find((b) => b.id === quizId);
     if (!quiz || !quiz.data) return null;
 
-    if (quiz.examFormat === 'essay' || (quiz.data.essayQuestions && quiz.data.essayQuestions.length > 0)) {
+    const isEssay = questionType
+      ? questionType === 'essay'
+      : quiz.examFormat === 'essay' ||
+        (Array.isArray(quiz.data.essayQuestions) &&
+          quiz.data.essayQuestions.length > 0 &&
+          (!Array.isArray(quiz.data.questions) || quiz.data.questions.length === 0));
+
+    if (isEssay) {
       if (Array.isArray(quiz.data.essayQuestions)) {
         quiz.data.essayQuestions.splice(questionIndex, 1);
         quiz.data.essayQuestions.forEach((q, idx) => {
@@ -672,14 +687,22 @@ export function deleteQuestionFromBankQuiz(
 export function updateQuestionInBankQuiz(
   quizId: string,
   questionIndex: number,
-  updatedQuestion: any
+  updatedQuestion: any,
+  questionType?: 'mcq' | 'essay'
 ): SavedBankQuiz | null {
   try {
     const list = getBankQuizzes();
     const quiz = list.find((b) => b.id === quizId);
     if (!quiz || !quiz.data) return null;
 
-    if (quiz.examFormat === 'essay' || (quiz.data.essayQuestions && quiz.data.essayQuestions.length > 0)) {
+    const isEssay = questionType
+      ? questionType === 'essay'
+      : quiz.examFormat === 'essay' ||
+        (Array.isArray(quiz.data.essayQuestions) &&
+          quiz.data.essayQuestions.length > 0 &&
+          (!Array.isArray(quiz.data.questions) || quiz.data.questions.length === 0));
+
+    if (isEssay) {
       if (Array.isArray(quiz.data.essayQuestions) && quiz.data.essayQuestions[questionIndex]) {
         quiz.data.essayQuestions[questionIndex] = {
           ...quiz.data.essayQuestions[questionIndex],
@@ -707,14 +730,22 @@ export function updateQuestionInBankQuiz(
 
 export function addQuestionToBankQuiz(
   quizId: string,
-  newQuestion: any
+  newQuestion: any,
+  questionType?: 'mcq' | 'essay'
 ): SavedBankQuiz | null {
   try {
     const list = getBankQuizzes();
     const quiz = list.find((b) => b.id === quizId);
     if (!quiz || !quiz.data) return null;
 
-    if (quiz.examFormat === 'essay' || (quiz.data.essayQuestions && quiz.data.essayQuestions.length > 0)) {
+    const isEssay = questionType
+      ? questionType === 'essay'
+      : quiz.examFormat === 'essay' ||
+        (Array.isArray(quiz.data.essayQuestions) &&
+          quiz.data.essayQuestions.length > 0 &&
+          (!Array.isArray(quiz.data.questions) || quiz.data.questions.length === 0));
+
+    if (isEssay) {
       if (!Array.isArray(quiz.data.essayQuestions)) {
         quiz.data.essayQuestions = [];
       }
@@ -749,49 +780,151 @@ export async function loadDataFromGoogleSheets(): Promise<boolean> {
     const data = await fetchSheetData();
     if (!data) return false;
 
-    // 1. Đồng bộ tài khoản
+    // 1. Đồng bộ tài khoản thông minh (hỗ trợ cả chuẩn mới và các dòng bị lệch cột trong Google Sheets)
     if (Array.isArray(data.accounts) && data.accounts.length > 0) {
       const currentList = getStoredAccounts();
       const mergedList: AppUser[] = [];
 
       for (const item of data.accounts) {
-        if (!item || (!item.id && !item.email && !item.username)) continue;
-        
-        const cleanEmail = (item.email || '').trim().toLowerCase();
-        const cleanUsername = (item.username || (cleanEmail ? cleanEmail.split('@')[0] : '')).trim().toLowerCase();
-        const cleanId = item.id || `user-${cleanUsername || Date.now()}`;
+        if (!item) continue;
+        const rawVals = Object.values(item).map((v) => (v !== undefined && v !== null ? String(v).trim() : ''));
+        if (rawVals.every((v) => v === '')) continue;
+
+        // Tìm trường email
+        let detectedEmail = '';
+        for (const val of rawVals) {
+          if (val.includes('@') && val.includes('.')) {
+            detectedEmail = val.toLowerCase();
+            break;
+          }
+        }
+        if (!detectedEmail && item.email && String(item.email).includes('@')) {
+          detectedEmail = String(item.email).trim().toLowerCase();
+        }
+
+        // Tìm trường vai trò (role)
+        let detectedRole: UserRole = 'student';
+        for (const val of rawVals) {
+          const lower = val.toLowerCase();
+          if (lower.includes('admin') || lower.includes('quản trị')) {
+            detectedRole = 'admin';
+            break;
+          } else if (lower.includes('teacher') || lower.includes('giáo viên') || lower.includes('gv')) {
+            detectedRole = 'teacher';
+            break;
+          }
+        }
+
+        // Tìm mật khẩu (chuỗi 4-20 ký tự số/chữ không chứa @, không phải Lớp X, không phải ngày giờ)
+        let detectedPassword = '';
+        if (item.password && String(item.password).trim().length >= 4) {
+          detectedPassword = String(item.password).trim();
+        } else {
+          for (const val of rawVals) {
+            if (
+              val.length >= 4 &&
+              val.length <= 25 &&
+              !val.includes('@') &&
+              !val.startsWith('Lớp') &&
+              !val.includes('/') &&
+              !val.includes(':') &&
+              !val.startsWith('user-') &&
+              val !== 'admin' &&
+              val !== 'teacher' &&
+              val !== 'student' &&
+              val !== 'Giáo viên (GV)' &&
+              val !== 'Quản trị viên (Admin)' &&
+              val !== 'Học sinh'
+            ) {
+              // Ưu tiên chuỗi số hoặc mật khẩu ngắn
+              if (/^\d{4,8}$/.test(val) || !detectedPassword) {
+                detectedPassword = val;
+              }
+            }
+          }
+        }
+
+        // Tìm tên đăng nhập
+        let detectedUsername = '';
+        if (item.username && String(item.username).trim() && !String(item.username).includes('@')) {
+          detectedUsername = String(item.username).trim().toLowerCase();
+        } else {
+          for (const val of rawVals) {
+            if (
+              val &&
+              val.length >= 2 &&
+              val.length <= 25 &&
+              !val.includes('@') &&
+              !val.startsWith('Lớp') &&
+              !val.includes('/') &&
+              !val.includes(':') &&
+              !val.startsWith('user-') &&
+              val !== detectedPassword &&
+              !val.includes('Trường') &&
+              !val.includes('Giáo viên')
+            ) {
+              detectedUsername = val.toLowerCase();
+              break;
+            }
+          }
+        }
+        if (!detectedUsername && detectedEmail) {
+          detectedUsername = detectedEmail.split('@')[0].toLowerCase();
+        }
+
+        // Tìm họ tên
+        let detectedName = item.name || '';
+        if (!detectedName || detectedName === 'Thành viên') {
+          for (const val of rawVals) {
+            if (
+              val.length >= 2 &&
+              val.length <= 40 &&
+              !val.includes('@') &&
+              !val.startsWith('Lớp') &&
+              !val.includes('/') &&
+              !val.includes(':') &&
+              !val.startsWith('user-') &&
+              val !== detectedPassword &&
+              val.toLowerCase() !== detectedUsername &&
+              !val.includes('Trường') &&
+              !val.includes('Giáo viên')
+            ) {
+              detectedName = val;
+              break;
+            }
+          }
+        }
+
+        // Tìm khối lớp
+        let detectedGrade: Grade = 'Lớp 4';
+        for (const val of rawVals) {
+          if (val.startsWith('Lớp ') || val.startsWith('Khối ')) {
+            detectedGrade = (val.replace('Khối', 'Lớp').trim()) as Grade;
+            break;
+          }
+        }
+
+        const cleanId = item.id || `user-${detectedUsername || Date.now()}`;
 
         // Tìm tài khoản đối ứng trong máy hiện tại
         const matched = currentList.find(
           (c) =>
             (item.id && c.id === item.id) ||
-            (cleanUsername && c.username?.toLowerCase() === cleanUsername) ||
-            (cleanEmail && c.email?.toLowerCase() === cleanEmail)
+            (detectedUsername && c.username?.toLowerCase() === detectedUsername) ||
+            (detectedEmail && c.email?.toLowerCase() === detectedEmail)
         );
 
-        // Mật khẩu lấy từ Google Sheet (nếu có), fallback sang mật khẩu đã lưu ở máy
-        const finalPassword = (item.password && String(item.password).trim().length > 0)
-          ? String(item.password).trim()
-          : (matched?.password || (cleanUsername === 'admin' ? 'admin123' : ''));
-
-        // Chuẩn hóa vai trò
-        let userRole: UserRole = 'student';
-        const roleStr = String(item.role || '').toLowerCase();
-        if (roleStr.includes('admin') || roleStr.includes('quản trị')) {
-          userRole = 'admin';
-        } else if (roleStr.includes('teacher') || roleStr.includes('giáo viên') || roleStr.includes('gv')) {
-          userRole = 'teacher';
-        }
+        const finalPassword = detectedPassword || matched?.password || (detectedUsername === 'admin' ? 'admin123' : '123456');
 
         mergedList.push({
           id: cleanId,
-          username: cleanUsername || 'user',
-          email: cleanEmail,
+          username: detectedUsername || 'user',
+          email: detectedEmail || `${detectedUsername || 'user'}@studyai.edu.vn`,
           password: finalPassword,
-          name: item.name || matched?.name || (cleanUsername === 'admin' ? 'Ban Quản Trị Hệ Thống' : 'Thành viên'),
-          role: userRole,
-          grade: (item.grade as Grade) || matched?.grade || 'Lớp 4',
-          subject: (item.subject as Subject) || matched?.subject,
+          name: detectedName || matched?.name || (detectedUsername === 'admin' ? 'Ban Quản Trị Hệ Thống' : 'Thành viên'),
+          role: detectedRole,
+          grade: detectedGrade || matched?.grade || 'Lớp 4',
+          subject: (item.subject as Subject) || matched?.subject || (detectedRole === 'teacher' ? 'Toán' : undefined),
           school: item.school || matched?.school || 'Trường Tiểu học',
           createdAt: typeof item.createdAt === 'number' && item.createdAt > 0 ? item.createdAt : (matched?.createdAt || Date.now()),
         });

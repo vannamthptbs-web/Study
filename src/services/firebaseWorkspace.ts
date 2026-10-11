@@ -904,7 +904,9 @@ export const autoSyncBankQuiz = async (quiz: any): Promise<void> => {
           quiz.grade,
           quiz.creatorName,
           quiz.creatorRole === 'teacher' ? 'Giáo viên' : 'Học sinh',
-          quiz.data?.questions?.length || quiz.data?.essayQuestions?.length || 0,
+          quiz.examFormat === 'mixed'
+            ? `${quiz.data?.questions?.length || 0} TN + ${quiz.data?.essayQuestions?.length || 0} TL`
+            : (quiz.data?.questions?.length || quiz.data?.essayQuestions?.length || 0),
           new Date(quiz.createdAt).toLocaleString('vi-VN'),
         ],
       ]);

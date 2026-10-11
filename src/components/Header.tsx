@@ -15,6 +15,7 @@ import {
   Calculator,
   LogOut,
   HelpCircle,
+  FolderOpen,
 } from 'lucide-react';
 import { Grade, ActiveTab, UserProfile } from '../types/study';
 import { GRADES } from '../data/subjects';
@@ -28,6 +29,7 @@ interface Props {
   profile: UserProfile;
   onOpenAuth: () => void;
   onOpenFormulas?: () => void;
+  onOpenQuestionBank?: () => void;
   onLogout?: () => void;
 }
 
@@ -39,6 +41,7 @@ export const Header: React.FC<Props> = ({
   profile,
   onOpenAuth,
   onOpenFormulas,
+  onOpenQuestionBank,
   onLogout,
 }) => {
   // Tabs: Đầy đủ các tính năng học tập & Menu Quản trị (Admin)
@@ -181,7 +184,19 @@ export const Header: React.FC<Props> = ({
                 className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 border border-indigo-200/80 text-indigo-700 text-xs font-bold transition-all shadow-2xs hover:scale-102"
               >
                 <Calculator className="w-3.5 h-3.5 text-indigo-600" />
-                <span className="hidden sm:inline">Công thức chuẩn</span>
+                <span className="hidden sm:inline">Công thức</span>
+              </button>
+            )}
+
+            {/* Quick Question Bank Button */}
+            {onOpenQuestionBank && (
+              <button
+                onClick={onOpenQuestionBank}
+                title="Ngân hàng đề thi phân loại theo khối lớp & sửa/xóa câu hỏi"
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-sky-50 hover:bg-sky-100 border border-sky-200/80 text-sky-800 text-xs font-bold transition-all shadow-2xs hover:scale-102"
+              >
+                <FolderOpen className="w-3.5 h-3.5 text-sky-600" />
+                <span className="hidden sm:inline">Ngân hàng đề</span>
               </button>
             )}
 

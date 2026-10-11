@@ -395,3 +395,98 @@ Hãy chấm điểm (0 đến ${maxPoints}) và nhận xét lời phê ân cần
     return JSON.parse(raw);
   });
 }
+
+export async function clientGenerateMixedExamFromAI(
+  apiKey: string,
+  subject: Subject,
+  grade: Grade,
+  topic: string,
+  mcqCount: number = 5,
+  essayCount: number = 2,
+  difficulty: 'easy' | 'medium' | 'hard' = 'medium',
+  files?: UploadedFileItem[],
+  customPrompt?: string,
+  role: UserRole = 'teacher'
+): Promise<QuizData> {
+  return await executeWithModelFallback(apiKey, async (ai, model) => {
+    const safeMcqCount = Math.min(Math.max(Number(mcqCount) || 0, 0), 20);
+    const safeEssayCount = Math.min(Math.max(Number(essayCount) || 0, 0), 10);
+
+    const promptText = `Bạn là chuyên gia sư phạm Việt Nam, chuyên biên soạn đề kiểm tra toàn diện kết hợp cả TRẮC NGHIỆM (TN) và TỰ LUẬN (TL) bám sát SGK:
+- Đối tượng: ${role === 'teacher' ? 'Giáo viên' : 'Học sinh'}
+- Lớp: ${grade}, Môn: ${subject}, Chủ đề: "${topic}"
+- CẤU TRÚC YÊU CẦU:
+  + Phần Trắc nghiệm (TN): Đúng ${safeMcqCount} câu hỏi 4 lựa chọn A, B, C, D.
+  + Phần Tự luận (TL): Đúng ${safeEssayCount} câu hỏi/bài toán có phân bổ điểm số, lời giải mẫu và thang điểm.
+- Mức độ: ${difficulty}
+${customPrompt ? `- Yêu cầu thêm: ${customPrompt}` : ''}
+YÊU CẦU:
+1. Mọi công thức toán học, phép tính viết trong LaTeX ($...$).
+2. Trắc nghiệm có đủ correctAnswer (A, B, C hoặc D) và explanation.
+3. Tự luận có question, points, sampleAnswer, rubric.`;
+
+    const parts: any[] = [];
+    if (files && files.length > 0) {
+      parts.push(...buildFileParts(files));
+    }
+    parts.push({ text: promptText });
+
+    const response = await ai.models.generateContent({
+      model,
+      contents: { parts },
+      config: {
+        responseMimeType: 'application/json',
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            title: { type: Type.STRING },
+            topic: { type: Type.STRING },
+            grade: { type: Type.STRING },
+            subject: { type: Type.STRING },
+            durationMinutes: { type: Type.INTEGER },
+            questions: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  id: { type: Type.INTEGER },
+                  question: { type: Type.STRING },
+                  options: {
+                    type: Type.ARRAY,
+                    items: { type: Type.STRING },
+                  },
+                  correctAnswer: { type: Type.STRING },
+                  explanation: { type: Type.STRING },
+                  subtopic: { type: Type.STRING },
+                },
+                required: ['id', 'question', 'options', 'correctAnswer', 'explanation', 'subtopic'],
+              },
+            },
+            essayQuestions: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  id: { type: Type.INTEGER },
+                  question: { type: Type.STRING },
+                  points: { type: Type.NUMBER },
+                  guideline: { type: Type.STRING },
+                  sampleAnswer: { type: Type.STRING },
+                  rubric: { type: Type.STRING },
+                  subtopic: { type: Type.STRING },
+                },
+                required: ['id', 'question', 'points', 'sampleAnswer', 'rubric'],
+              },
+            },
+          },
+          required: ['title', 'topic', 'questions', 'essayQuestions'],
+        },
+      },
+    });
+
+    const raw = response.text || '{}';
+    const parsed = JSON.parse(raw);
+    parsed.examFormat = 'mixed';
+    return parsed;
+  });
+}

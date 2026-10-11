@@ -146,9 +146,7 @@ export const FormulaReferenceModal: React.FC<Props> = ({
                           className={`text-[11px] font-bold px-2 py-0.5 rounded-md ${
                             formula.category === 'Toán học'
                               ? 'bg-blue-50 text-blue-700 border border-blue-200'
-                              : formula.category === 'Tiếng Việt'
-                              ? 'bg-rose-50 text-rose-700 border border-rose-200'
-                              : formula.category === 'Khoa học'
+                              : formula.category.includes('KHTN')
                               ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
                               : 'bg-amber-50 text-amber-700 border border-amber-200'
                           }`}

@@ -95,6 +95,8 @@ export const QuestionBankModal: React.FC<Props> = ({
   const [confirmDeleteQIdx, setConfirmDeleteQIdx] = useState<number | null>(null);
   const [confirmDeleteQType, setConfirmDeleteQType] = useState<'mcq' | 'essay'>('mcq');
 
+  const isTeacherOrAdmin = currentUser.role === 'teacher' || currentUser.role === 'admin';
+
   const refreshList = () => {
     setBankList(getBankQuizzes());
   };
@@ -144,9 +146,14 @@ export const QuestionBankModal: React.FC<Props> = ({
         }
       }
 
+      // Nếu người dùng là học sinh: ngân hàng chỉ hiện những bộ đề do Giáo viên biên soạn
+      if (!isTeacherOrAdmin && item.creatorRole !== 'teacher' && item.creatorRole !== 'admin') {
+        return false;
+      }
+
       return true;
     });
-  }, [bankList, selectedGradeFilter, selectedSubjectFilter, selectedFormatFilter, searchQuery]);
+  }, [bankList, selectedGradeFilter, selectedSubjectFilter, selectedFormatFilter, searchQuery, isTeacherOrAdmin]);
 
   if (!isOpen) return null;
 
@@ -646,7 +653,7 @@ export const QuestionBankModal: React.FC<Props> = ({
 
                     {/* Actions on this quiz */}
                     <div className="flex items-center gap-1.5 shrink-0">
-                      {!isEditingQuizMeta && (
+                      {isTeacherOrAdmin && !isEditingQuizMeta && (
                         <button
                           type="button"
                           onClick={handleStartEditMeta}
@@ -657,14 +664,16 @@ export const QuestionBankModal: React.FC<Props> = ({
                         </button>
                       )}
 
-                      <button
-                        type="button"
-                        onClick={() => setConfirmDeleteQuizId(activeQuiz.id)}
-                        title="Xóa đề thi khỏi ngân hàng"
-                        className="p-2 text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 rounded-xl transition-colors border border-rose-200"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                      {isTeacherOrAdmin && (
+                        <button
+                          type="button"
+                          onClick={() => setConfirmDeleteQuizId(activeQuiz.id)}
+                          title="Xóa đề thi khỏi ngân hàng"
+                          className="p-2 text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 rounded-xl transition-colors border border-rose-200"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
 
                       <button
                         type="button"
@@ -690,14 +699,16 @@ export const QuestionBankModal: React.FC<Props> = ({
                         ? `${activeQuiz.data?.essayQuestions?.length || 0} câu`
                         : `${activeQuiz.data?.questions?.length || 0} câu`}):
                     </span>
-                    <button
-                      type="button"
-                      onClick={() => handleStartAddQuestion()}
-                      className="flex items-center gap-1 px-3 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs rounded-lg border border-indigo-200 transition-colors"
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                      <span>Thêm câu hỏi mới</span>
-                    </button>
+                    {isTeacherOrAdmin && (
+                      <button
+                        type="button"
+                        onClick={() => handleStartAddQuestion()}
+                        className="flex items-center gap-1 px-3 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs rounded-lg border border-indigo-200 transition-colors"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>Thêm câu hỏi mới</span>
+                      </button>
+                    )}
                   </div>
                 </div>
 
@@ -879,13 +890,15 @@ export const QuestionBankModal: React.FC<Props> = ({
                             <span className="w-2.5 h-2.5 rounded-full bg-sky-500"></span>
                             Phần I: Trắc nghiệm khách quan ({activeQuiz.data?.questions?.length || 0} câu)
                           </h4>
-                          <button
-                            type="button"
-                            onClick={() => handleStartAddQuestion('mcq')}
-                            className="text-[11px] font-bold text-sky-700 hover:text-sky-900 bg-sky-50 hover:bg-sky-100 px-2.5 py-0.5 rounded-lg border border-sky-200 transition-colors"
-                          >
-                            + Thêm câu TN
-                          </button>
+                          {isTeacherOrAdmin && (
+                            <button
+                              type="button"
+                              onClick={() => handleStartAddQuestion('mcq')}
+                              className="text-[11px] font-bold text-sky-700 hover:text-sky-900 bg-sky-50 hover:bg-sky-100 px-2.5 py-0.5 rounded-lg border border-sky-200 transition-colors"
+                            >
+                              + Thêm câu TN
+                            </button>
+                          )}
                         </div>
                       )}
 
@@ -1004,27 +1017,29 @@ export const QuestionBankModal: React.FC<Props> = ({
                                     )}
                                   </div>
 
-                                  <div className="flex items-center gap-1">
-                                    <button
-                                      type="button"
-                                      onClick={() => handleStartEditQuestion(qIdx, 'mcq')}
-                                      className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
-                                      title="Sửa câu này"
-                                    >
-                                      <Edit3 className="w-3.5 h-3.5" />
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        setConfirmDeleteQIdx(qIdx);
-                                        setConfirmDeleteQType('mcq');
-                                      }}
-                                      className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
-                                      title="Xóa câu này"
-                                    >
-                                      <Trash2 className="w-3.5 h-3.5" />
-                                    </button>
-                                  </div>
+                                  {isTeacherOrAdmin && (
+                                    <div className="flex items-center gap-1">
+                                      <button
+                                        type="button"
+                                        onClick={() => handleStartEditQuestion(qIdx, 'mcq')}
+                                        className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                                        title="Sửa câu này"
+                                      >
+                                        <Edit3 className="w-3.5 h-3.5" />
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setConfirmDeleteQIdx(qIdx);
+                                          setConfirmDeleteQType('mcq');
+                                        }}
+                                        className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                                        title="Xóa câu này"
+                                      >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                      </button>
+                                    </div>
+                                  )}
                                 </div>
 
                                 <div className="mt-2 text-sm text-slate-800 font-medium">
@@ -1209,27 +1224,29 @@ export const QuestionBankModal: React.FC<Props> = ({
                                     )}
                                   </div>
 
-                                  <div className="flex items-center gap-1">
-                                    <button
-                                      type="button"
-                                      onClick={() => handleStartEditQuestion(qIdx, 'essay')}
-                                      className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
-                                      title="Sửa câu này"
-                                    >
-                                      <Edit3 className="w-3.5 h-3.5" />
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        setConfirmDeleteQIdx(qIdx);
-                                        setConfirmDeleteQType('essay');
-                                      }}
-                                      className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
-                                      title="Xóa câu này"
-                                    >
-                                      <Trash2 className="w-3.5 h-3.5" />
-                                    </button>
-                                  </div>
+                                  {isTeacherOrAdmin && (
+                                    <div className="flex items-center gap-1">
+                                      <button
+                                        type="button"
+                                        onClick={() => handleStartEditQuestion(qIdx, 'essay')}
+                                        className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                                        title="Sửa câu này"
+                                      >
+                                        <Edit3 className="w-3.5 h-3.5" />
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setConfirmDeleteQIdx(qIdx);
+                                          setConfirmDeleteQType('essay');
+                                        }}
+                                        className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                                        title="Xóa câu này"
+                                      >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                      </button>
+                                    </div>
+                                  )}
                                 </div>
 
                                 <div className="mt-2 text-sm text-slate-800 font-medium">

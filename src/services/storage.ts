@@ -17,6 +17,7 @@ import {
   sendToAppsScriptWebhook,
   fetchSheetData,
 } from './firebaseWorkspace';
+import { DEFAULT_TEACHER_BANK_QUIZZES } from '../data/defaultBankQuizzes';
 
 const PROFILE_KEY = 'study_ai_active_profile_v3';
 const ACTIVE_SESSION_KEY = 'study_ai_active_session_user_v3';
@@ -48,6 +49,34 @@ export const DEFAULT_ADMIN_ACCOUNT: AppUser = {
   grade: 'Lớp 5',
   school: 'Hệ Thống StudyAI Tiểu Học Việt Nam',
   createdAt: 1700000000000,
+};
+
+// Default Teacher Account: tk: gv_ha - mk: 123456
+export const DEFAULT_TEACHER_ACCOUNT: AppUser = {
+  id: 'user-teacher-01',
+  username: 'gv_ha',
+  email: 'gv_ha@studyai.edu.vn',
+  password: '123456',
+  name: 'Cô Nguyễn Thu Hà',
+  role: 'teacher',
+  grade: 'Lớp 4',
+  subject: 'Toán',
+  school: 'Trường Tiểu học Dịch Vọng A',
+  createdAt: 1700000001000,
+};
+
+// Default Student Account: tk: hs_an - mk: 123456
+export const DEFAULT_STUDENT_ACCOUNT: AppUser = {
+  id: 'user-student-01',
+  username: 'hs_an',
+  email: 'hs_an@studyai.edu.vn',
+  password: '123456',
+  name: 'Nguyễn Minh An',
+  role: 'student',
+  grade: 'Lớp 4',
+  subject: 'Toán',
+  school: 'Trường Tiểu học Dịch Vọng A',
+  createdAt: 1700000002000,
 };
 
 // Initial Guest Profile (when opening the app for the first time)
@@ -132,12 +161,26 @@ export function getStoredAccounts(): AppUser[] {
     const list: AppUser[] = raw ? JSON.parse(raw) : [];
     const deduped = deduplicateAccounts(list);
 
-    // Ensure default admin account exists
-    const adminIndex = deduped.findIndex(
+    // Ensure default admin, teacher and student accounts exist
+    const hasAdmin = deduped.some(
       (a) => a.username?.toLowerCase() === 'admin' || a.email?.toLowerCase() === 'admin@studyai.edu.vn'
     );
-    if (adminIndex === -1) {
+    if (!hasAdmin) {
       deduped.unshift(DEFAULT_ADMIN_ACCOUNT);
+    }
+
+    const hasTeacher = deduped.some(
+      (a) => a.username?.toLowerCase() === 'gv_ha' || a.email?.toLowerCase() === 'gv_ha@studyai.edu.vn'
+    );
+    if (!hasTeacher) {
+      deduped.push(DEFAULT_TEACHER_ACCOUNT);
+    }
+
+    const hasStudent = deduped.some(
+      (a) => a.username?.toLowerCase() === 'hs_an' || a.email?.toLowerCase() === 'hs_an@studyai.edu.vn'
+    );
+    if (!hasStudent) {
+      deduped.push(DEFAULT_STUDENT_ACCOUNT);
     }
 
     // If cleaned list is different from raw list length or raw was empty, persist cleaned version
@@ -146,7 +189,7 @@ export function getStoredAccounts(): AppUser[] {
     }
     return deduped;
   } catch {
-    return [DEFAULT_ADMIN_ACCOUNT];
+    return [DEFAULT_ADMIN_ACCOUNT, DEFAULT_TEACHER_ACCOUNT, DEFAULT_STUDENT_ACCOUNT];
   }
 }
 
@@ -574,7 +617,30 @@ export function saveReviewItem(item: SavedItem, userId?: string): void {
 export function getBankQuizzes(): SavedBankQuiz[] {
   try {
     const raw = localStorage.getItem(BANK_QUIZZES_KEY);
-    const list: SavedBankQuiz[] = raw ? JSON.parse(raw) : [];
+    let list: SavedBankQuiz[] = raw ? JSON.parse(raw) : [];
+
+    // If storage is empty or missing standard teacher bank quizzes, populate with default teacher quizzes
+    if (!Array.isArray(list) || list.length === 0) {
+      list = [...DEFAULT_TEACHER_BANK_QUIZZES];
+      try {
+        localStorage.setItem(BANK_QUIZZES_KEY, JSON.stringify(list));
+      } catch {}
+    } else {
+      // Ensure all standard default teacher bank quizzes exist if not already present
+      let changed = false;
+      for (const defQuiz of DEFAULT_TEACHER_BANK_QUIZZES) {
+        if (!list.some((b) => b && b.id === defQuiz.id)) {
+          list.push(defQuiz);
+          changed = true;
+        }
+      }
+      if (changed) {
+        try {
+          localStorage.setItem(BANK_QUIZZES_KEY, JSON.stringify(list));
+        } catch {}
+      }
+    }
+
     const seen = new Set<string>();
     return list
       .filter((b) => {
@@ -604,7 +670,7 @@ export function getBankQuizzes(): SavedBankQuiz[] {
         return b as SavedBankQuiz;
       });
   } catch {
-    return [];
+    return [...DEFAULT_TEACHER_BANK_QUIZZES];
   }
 }
 

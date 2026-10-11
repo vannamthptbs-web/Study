@@ -29,10 +29,11 @@ import {
   SavedBankQuiz,
   UserProfile,
   UploadedFileItem,
+  QuizSubmissionResult,
 } from '../types/study';
 import { generateEssayExamFromAI, gradeEssayWithAI } from '../services/api';
-import { saveBankQuiz } from '../services/storage';
-import { autoSyncBankQuiz } from '../services/firebaseWorkspace';
+import { saveBankQuiz, saveQuizResult } from '../services/storage';
+import { autoSyncBankQuiz, autoSyncQuiz, syncQuizResult } from '../services/firebaseWorkspace';
 import { FormulaToolbar } from './FormulaToolbar';
 import { FileAttachmentInput } from './FileAttachmentInput';
 import { MarkdownContent } from './MarkdownContent';
@@ -501,7 +502,44 @@ export const EssayExamSection: React.FC<Props> = ({
       await Promise.all(promises);
       setGradingResults(newGradingResults);
       setShowFullSampleAnswers(true);
-      onNotification('AI đã hoàn tất chấm điểm và nhận xét chi tiết từng câu hỏi tự luận! 🌟');
+
+      // Calculate final score
+      let totalEarned = 0;
+      let totalMax = 0;
+      activeExam.essayQuestions.forEach((q) => {
+        totalMax += q.points || 5;
+        totalEarned += newGradingResults[q.id]?.score || 0;
+      });
+      const finalScore = totalMax > 0 ? Math.round(((totalEarned / totalMax) * 10) * 10) / 10 : 10;
+
+      // Create submission result & auto sync to Google Sheets
+      const submissionResult: QuizSubmissionResult = {
+        id: `essay-res-${Date.now()}`,
+        timestamp: Date.now(),
+        userId: currentUser.id,
+        userName: currentUser.name,
+        userEmail: currentUser.email,
+        userRole: currentUser.role,
+        subject: activeExam.subject || selectedSubject,
+        grade: activeExam.grade || selectedGrade,
+        topic: activeExam.topic || 'Đề tự luận',
+        examFormat: 'essay',
+        score: finalScore,
+        correctCount: Math.round((finalScore / 10) * activeExam.essayQuestions.length),
+        totalQuestions: activeExam.essayQuestions.length,
+        userAnswers: {},
+        essayAnswers: studentAnswers,
+        essayFeedback: newGradingResults,
+        weakSubtopics: [],
+        questions: [],
+        essayQuestions: activeExam.essayQuestions,
+      };
+
+      saveQuizResult(submissionResult);
+      autoSyncQuiz(submissionResult, currentUser);
+      syncQuizResult(submissionResult, currentUser).catch(() => {});
+
+      onNotification(`AI đã hoàn tất chấm điểm (${finalScore}/10 điểm) và tự động lưu kết quả vào Google Sheets! 📊`);
     } catch (e) {
       console.error(e);
       onNotification('Đã nộp bài thành công! Em hãy đối chiếu với đáp án mẫu bên dưới.');

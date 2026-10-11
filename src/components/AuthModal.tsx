@@ -463,6 +463,50 @@ export const AuthModal: React.FC<Props> = ({
                 </button>
               </form>
 
+              {/* Quick Demo Accounts Helper */}
+              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3.5 space-y-2 text-xs">
+                <span className="font-bold text-slate-700 block">
+                  Chọn nhanh tài khoản thử nghiệm:
+                </span>
+                <div className="grid grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setLoginIdentifier('gv_ha');
+                      setLoginPassword('123456');
+                    }}
+                    className="p-2 rounded-xl border border-emerald-200 bg-emerald-50/80 hover:bg-emerald-100 text-emerald-900 font-bold text-[11px] text-center transition-colors"
+                  >
+                    <span>Giáo viên</span>
+                    <span className="block font-normal text-[10px] text-emerald-700">gv_ha / 123456</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setLoginIdentifier('hs_an');
+                      setLoginPassword('123456');
+                    }}
+                    className="p-2 rounded-xl border border-sky-200 bg-sky-50/80 hover:bg-sky-100 text-sky-900 font-bold text-[11px] text-center transition-colors"
+                  >
+                    <span>Học sinh</span>
+                    <span className="block font-normal text-[10px] text-sky-700">hs_an / 123456</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setLoginIdentifier('admin');
+                      setLoginPassword('admin123');
+                    }}
+                    className="p-2 rounded-xl border border-indigo-200 bg-indigo-50/80 hover:bg-indigo-100 text-indigo-900 font-bold text-[11px] text-center transition-colors"
+                  >
+                    <span>Quản trị</span>
+                    <span className="block font-normal text-[10px] text-indigo-700">admin / admin123</span>
+                  </button>
+                </div>
+              </div>
+
               {/* Quick Google Sign In */}
               <div className="relative flex py-1 items-center">
                 <div className="grow border-t border-slate-200" />

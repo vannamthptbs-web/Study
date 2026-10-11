@@ -28,10 +28,11 @@ import {
   SavedBankQuiz,
   UserProfile,
   UploadedFileItem,
+  QuizSubmissionResult,
 } from '../types/study';
 import { generateMixedExamFromAI, gradeEssayWithAI } from '../services/api';
-import { saveBankQuiz } from '../services/storage';
-import { autoSyncBankQuiz } from '../services/firebaseWorkspace';
+import { saveBankQuiz, saveQuizResult } from '../services/storage';
+import { autoSyncBankQuiz, autoSyncQuiz, syncQuizResult } from '../services/firebaseWorkspace';
 import { FormulaToolbar } from './FormulaToolbar';
 import { FileAttachmentInput } from './FileAttachmentInput';
 import { MarkdownContent } from './MarkdownContent';
@@ -238,35 +239,101 @@ export const MixedExamSection: React.FC<Props> = ({
     setTimerRunning(false);
 
     // Grade essay questions using AI
+    let essayEarned = 0;
+    let essayMax = 0;
+    const results: Record<number, { score: number; comment: string }> = {};
+
     if (activeExam.essayQuestions && activeExam.essayQuestions.length > 0) {
       setGradingLoading(true);
-      const results: Record<number, { score: number; comment: string }> = {};
 
       for (const q of activeExam.essayQuestions) {
         const studentAns = essayAnswers[q.id] || '';
+        const maxPts = q.points || 5;
+        essayMax += maxPts;
+
         try {
           const res = await gradeEssayWithAI(
             q.question,
             q.sampleAnswer,
             q.rubric || 'Đúng lời giải và phép tính',
             studentAns,
-            q.points,
+            maxPts,
             selectedGrade,
             selectedSubject
           );
           results[q.id] = res;
+          essayEarned += res.score || 0;
         } catch {
+          const scoreFallback = studentAns.trim() ? Math.round(maxPts * 0.7 * 10) / 10 : 0;
           results[q.id] = {
-            score: studentAns.trim() ? Math.round(q.points * 0.7 * 10) / 10 : 0,
+            score: scoreFallback,
             comment: studentAns.trim() ? 'Đã ghi nhận bài làm tự luận của học sinh.' : 'Chưa điền bài làm.',
           };
+          essayEarned += scoreFallback;
         }
       }
       setEssayGradingResults(results);
       setGradingLoading(false);
     }
 
-    onNotification('Đã nộp bài thi thành công!');
+    // Calculate MCQ correct
+    let mcqCorrect = 0;
+    const weakList: string[] = [];
+    if (activeExam.questions && activeExam.questions.length > 0) {
+      activeExam.questions.forEach((q) => {
+        const choice = (selectedMcqAnswers[q.id] || '').trim().toUpperCase();
+        const actual = (q.correctAnswer || '').trim().charAt(0).toUpperCase();
+        if (choice === actual) {
+          mcqCorrect++;
+        } else if (q.subtopic) {
+          weakList.push(q.subtopic);
+        }
+      });
+    }
+
+    // Final score calculation
+    let finalScore = 10;
+    const hasMcq = activeExam.questions && activeExam.questions.length > 0;
+    const hasEssay = activeExam.essayQuestions && activeExam.essayQuestions.length > 0;
+
+    if (hasMcq && hasEssay) {
+      const mcqPt = (mcqCorrect / activeExam.questions.length) * 5;
+      const essayPt = essayMax > 0 ? (essayEarned / essayMax) * 5 : 5;
+      finalScore = Math.round((mcqPt + essayPt) * 10) / 10;
+    } else if (hasMcq) {
+      finalScore = Math.round(((mcqCorrect / activeExam.questions.length) * 10) * 10) / 10;
+    } else if (hasEssay) {
+      finalScore = essayMax > 0 ? Math.round(((essayEarned / essayMax) * 10) * 10) / 10 : 10;
+    }
+
+    // Auto-save submission result & sync directly to Google Sheets
+    const submissionResult: QuizSubmissionResult = {
+      id: `mixed-res-${Date.now()}`,
+      timestamp: Date.now(),
+      userId: currentUser.id,
+      userName: currentUser.name,
+      userEmail: currentUser.email,
+      userRole: currentUser.role,
+      subject: activeExam.subject || selectedSubject,
+      grade: activeExam.grade || selectedGrade,
+      topic: activeExam.topic || 'Đề toàn diện',
+      examFormat: 'mixed',
+      score: finalScore,
+      correctCount: mcqCorrect,
+      totalQuestions: (activeExam.questions?.length || 0) + (activeExam.essayQuestions?.length || 0),
+      userAnswers: selectedMcqAnswers,
+      essayAnswers: essayAnswers,
+      essayFeedback: results,
+      weakSubtopics: Array.from(new Set(weakList)),
+      questions: activeExam.questions || [],
+      essayQuestions: activeExam.essayQuestions || [],
+    };
+
+    saveQuizResult(submissionResult);
+    autoSyncQuiz(submissionResult, currentUser);
+    syncQuizResult(submissionResult, currentUser).catch(() => {});
+
+    onNotification(`Đã nộp bài thi thành công! Điểm số: ${finalScore}/10. Kết quả đã lưu Google Sheets! 📊`);
   };
 
   // Calculate scores

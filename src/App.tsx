@@ -7,6 +7,7 @@ import {
   ChatMessage,
   WeakTopicItem,
   QuizSubmissionResult,
+  SavedBankQuiz,
 } from './types/study';
 import { Header } from './components/Header';
 import { HeroSection } from './components/HeroSection';
@@ -44,6 +45,7 @@ export default function App() {
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [formulaModalOpen, setFormulaModalOpen] = useState(false);
   const [bankModalOpen, setBankModalOpen] = useState(false);
+  const [selectedBankQuizForTaking, setSelectedBankQuizForTaking] = useState<SavedBankQuiz | null>(null);
 
   // Google Sheets là nguồn dữ liệu duy nhất: khi mở App hoặc reload, tự động lấy dữ liệu từ Google Sheets
   useEffect(() => {
@@ -210,6 +212,7 @@ export default function App() {
           onSelectQuiz={(selectedQuiz) => {
             setSelectedGrade(selectedQuiz.grade);
             setSelectedSubject(selectedQuiz.subject);
+            setSelectedBankQuizForTaking(selectedQuiz);
             setActiveTab('quiz');
             setBankModalOpen(false);
             showToast(`Đã mở bộ đề: ${selectedQuiz.title}`);
@@ -279,6 +282,8 @@ export default function App() {
             onGoToReview={handleGoToReview}
             onNotification={showToast}
             onOpenAuth={() => setAuthModalOpen(true)}
+            selectedBankQuiz={selectedBankQuizForTaking}
+            onClearSelectedBankQuiz={() => setSelectedBankQuizForTaking(null)}
           />
         )}
 

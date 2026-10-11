@@ -40,6 +40,7 @@ import { MarkdownContent } from './MarkdownContent';
 import { FormulaToolbar } from './FormulaToolbar';
 import { EssayExamSection } from './EssayExamSection';
 import { MixedExamSection } from './MixedExamSection';
+import { StudentQuizHub } from './StudentQuizHub';
 
 interface Props {
   selectedGrade: Grade;
@@ -51,6 +52,8 @@ interface Props {
   onGoToReview: (topic: string) => void;
   onNotification: (msg: string) => void;
   onOpenAuth?: () => void;
+  selectedBankQuiz?: SavedBankQuiz | null;
+  onClearSelectedBankQuiz?: () => void;
 }
 
 export const QuizModule: React.FC<Props> = ({
@@ -63,9 +66,14 @@ export const QuizModule: React.FC<Props> = ({
   onGoToReview,
   onNotification,
   onOpenAuth,
+  selectedBankQuiz,
+  onClearSelectedBankQuiz,
 }) => {
+  const isTeacherOrAdmin = currentUser.role === 'teacher' || currentUser.role === 'admin';
+  const [viewAsStudent, setViewAsStudent] = useState(false);
+
   // Mode: 'student_practice' or 'teacher_creator'
-  const [subMode, setSubMode] = useState<'practice' | 'creator'>('practice');
+  const [subMode, setSubMode] = useState<'practice' | 'creator'>('creator');
   // Exam Format: 'multiple_choice' (Trắc nghiệm) or 'essay' (Tự luận) or 'mixed' (Kết hợp TN & TL)
   const [examFormat, setExamFormat] = useState<'multiple_choice' | 'essay' | 'mixed'>('mixed');
 
@@ -291,21 +299,70 @@ export const QuizModule: React.FC<Props> = ({
 
   const sheetUrl = getSpreadsheetUrl();
 
+  // NẾU LÀ HỌC SINH (HOẶC GIÁO VIÊN ĐANG BẬT XEM TRƯỚC GIAO DIỆN HỌC SINH):
+  // HIỂN THỊ KHU VỰC LUYỆN THI DÀNH RIÊNG CHO HỌC SINH:
+  // - CHỈ CHỌN KHỐI LỚP
+  // - CHỈ HIỆN BỘ ĐỀ THEO KHỐI DO GIÁO VIÊN ĐÃ SOẠN
+  // - KHÔNG TỰ SINH ĐỀ MỚI
+  // - LÀM BÀI, NỘP BÀI, CHẤM ĐIỂM VÀ LƯU VÀO GOOGLE SHEETS
+  if (!isTeacherOrAdmin || viewAsStudent) {
+    return (
+      <div className="space-y-4">
+        {isTeacherOrAdmin && (
+          <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3 flex flex-wrap items-center justify-between gap-2 text-xs text-amber-900 shadow-2xs">
+            <span className="flex items-center gap-1.5 font-semibold">
+              <span>👁️</span>
+              <span><strong>Chế độ xem trước của Thầy/Cô:</strong> Đang xem giao diện Luyện thi của Học sinh (chỉ chọn khối lớp và làm đề do Thầy/Cô biên soạn).</span>
+            </span>
+            <button
+              type="button"
+              onClick={() => setViewAsStudent(false)}
+              className="px-3 py-1 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-xl text-xs transition-colors shadow-2xs"
+            >
+              Quay lại Bảng Soạn Đề Giáo Viên
+            </button>
+          </div>
+        )}
+
+        <StudentQuizHub
+          selectedGrade={selectedGrade}
+          setSelectedGrade={setSelectedGrade}
+          selectedSubject={selectedSubject}
+          setSelectedSubject={setSelectedSubject}
+          currentUser={currentUser}
+          onQuizCompleted={onQuizCompleted}
+          onNotification={onNotification}
+          onOpenAuth={onOpenAuth}
+          selectedBankQuiz={selectedBankQuiz}
+          onClearSelectedBankQuiz={onClearSelectedBankQuiz}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
-      {/* Quiz Banner */}
+      {/* Teacher Quiz Banner */}
       <div className="bg-gradient-to-r from-emerald-900 via-teal-900 to-indigo-950 text-white rounded-3xl p-6 sm:p-8 shadow-md">
-        <div className="max-w-3xl">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 text-xs font-semibold text-emerald-200 mb-3 border border-white/10">
-            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-300" />
-            <span>Đánh giá năng lực • Tạo đề GV • Đồng bộ Google Sheets</span>
+        <div className="max-w-4xl">
+          <div className="flex flex-wrap items-center gap-2 mb-3">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 text-xs font-semibold text-emerald-200 border border-white/10">
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-300" />
+              <span>Góc Giáo Viên • Soạn đề Trắc nghiệm & Tự luận • Đồng bộ Google Sheets</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setViewAsStudent(true)}
+              className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-amber-400 text-slate-950 text-xs font-black hover:bg-amber-300 transition-colors shadow-2xs"
+            >
+              <span>Xem giao diện Học sinh 👁️</span>
+            </button>
           </div>
           <h2 className="text-xl sm:text-3xl font-extrabold tracking-tight">
-            Luyện thi & Soạn thảo trắc nghiệm chuẩn JSON
+            Soạn thảo & Biên soạn đề thi chuẩn cho Học sinh
           </h2>
           <p className="mt-2 text-emerald-100 text-xs sm:text-sm leading-relaxed">
-            Hỗ trợ học sinh tự luyện thi bấm giờ, và hỗ trợ thầy cô tạo đề thi trắc nghiệm từ văn bản hoặc ảnh chụp đề thi.
-            Mọi bài thi đều được tự động lưu vào <strong>Firestore</strong> và bảng tính <strong>Google Sheets</strong>.
+            Chào <strong>Thầy/Cô {currentUser.name}</strong>. Thầy/Cô có thể tạo đề thi Toàn diện (TN & TL) bằng AI hoặc gõ thủ công, lưu vào Ngân hàng câu hỏi để học sinh các khối làm bài và tự động lưu kết quả vào <strong>Google Sheets</strong>.
           </p>
 
           {/* Mode Switch: Practice vs Teacher Quiz Creator vs Tự Luận */}

@@ -260,8 +260,8 @@ export const Header: React.FC<Props> = ({
                   title="Quản lý tài khoản & Đổi mật khẩu"
                 >
                   <User className="w-3.5 h-3.5 text-indigo-600" />
-                  <span className="max-w-[80px] sm:max-w-[120px] truncate">
-                    {profile.role === 'admin' ? 'Admin: ' : profile.role === 'teacher' ? 'GV ' : ''}
+                  <span className="max-w-[100px] sm:max-w-[140px] truncate">
+                    {profile.role === 'admin' ? 'Admin: ' : profile.role === 'teacher' ? 'GV ' : 'HS '}
                     {profile.name}
                   </span>
                 </button>

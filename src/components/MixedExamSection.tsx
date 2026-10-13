@@ -32,7 +32,12 @@ import {
 } from '../types/study';
 import { generateMixedExamFromAI, gradeEssayWithAI } from '../services/api';
 import { saveBankQuiz, saveQuizResult } from '../services/storage';
-import { autoSyncBankQuiz, autoSyncQuiz, syncQuizResult } from '../services/firebaseWorkspace';
+import {
+  autoSyncBankQuiz,
+  autoSyncQuiz,
+  syncQuizResult,
+  STUDENT_SUBMISSION_DRIVE_FOLDER_URL,
+} from '../services/firebaseWorkspace';
 import { FormulaToolbar } from './FormulaToolbar';
 import { FileAttachmentInput } from './FileAttachmentInput';
 import { MarkdownContent } from './MarkdownContent';
@@ -325,6 +330,7 @@ export const MixedExamSection: React.FC<Props> = ({
       essayAnswers: essayAnswers,
       essayFeedback: results,
       weakSubtopics: Array.from(new Set(weakList)),
+      driveFolderUrl: STUDENT_SUBMISSION_DRIVE_FOLDER_URL,
       questions: activeExam.questions || [],
       essayQuestions: activeExam.essayQuestions || [],
     };

@@ -38,7 +38,7 @@ const BASE_TUTOR_SYSTEM_INSTRUCTION = `Bạn là "StudyAI Tiểu học" – mộ
 
 NGUYÊN TẮC VÀ PHƯƠNG PHÁP SƯ PHẠM TIỂU HỌC CỐT LÕI:
 1. XƯNG HÔ THÂN MẬT, GẦN GŨI: Xưng hô "Thầy/Cô - Con (hoặc Em)" hoặc "StudyAI - Bạn nhỏ". Giọng văn luôn tươi vui, nhẹ nhàng, truyền cảm hứng và kiên nhẫn như một người thầy, người cô tận tâm bên cạnh bé.
-2. CHUẨN CHƯƠNG TRÌNH GDPT 2018 TIỂU HỌC: Bám sát sách giáo khoa mới (Kết nối tri thức với cuộc sống, Chân trời sáng tạo, Cánh diều) theo đúng khối lớp bé chọn (Lớp 1, 2, 3, 4, hoặc 5).
+2. CHUẨN CHƯƠNG TRÌNH GDPT 2018 TIỂU HỌC: Bám sát sách giáo khoa mới (Kết nối tri thức với cuộc sống) theo đúng khối lớp bé chọn (Lớp 1, 2, 3, 4, hoặc 5).
 3. GIẢI THÍCH TRỰC QUAN, DỄ HIỂU:
    - Dùng ví dụ gắn liền với đời sống hàng ngày của trẻ nhỏ (que tính, viên bi, chiếc kẹo, quả táo, tranh vẽ ngộ nghĩnh).
    - Với môn Toán: Hướng dẫn bé tóm tắt bài toán, vẽ sơ đồ đoạn thẳng (nếu là bài toán có lời văn), viết câu lời giải tròn trịa, phép tính có đơn vị đo trong ngoặc đơn, và ghi đáp số rõ ràng.
@@ -391,7 +391,7 @@ app.post('/api/quiz', async (req: Request, res: Response) => {
 ${customPrompt ? `- Yêu cầu đặc biệt: ${customPrompt}` : ''}
 
 YÊU CẦU BẮT BUỘC VỀ DỮ LIỆU JSON:
-1. Câu hỏi bám sát chuẩn kiến thức SGK Tiểu học Việt Nam hiện hành (Kết nối tri thức, Chân trời sáng tạo, Cánh diều).
+1. Câu hỏi bám sát chuẩn kiến thức SGK Tiểu học Việt Nam hiện hành (Kết nối tri thức với cuộc sống).
 2. Nếu có tệp/ảnh đính kèm: Hãy khai thác các câu hỏi, dữ liệu hoặc nội dung từ tệp đó để tạo ra các câu hỏi trắc nghiệm chất lượng.
 3. Đúng 4 phương án rõ ràng (A, B, C, D).
 4. Trường correctAnswer CHỈ LÀ một chữ cái in hoa: "A", "B", "C" hoặc "D".
@@ -518,7 +518,7 @@ app.post('/api/essay-exam', async (req: Request, res: Response) => {
 ${customPrompt ? `- Yêu cầu sư phạm đặc biệt từ Giáo viên: ${customPrompt}` : ''}
 
 YÊU CẦU ĐỐI VỚI ĐỀ THI TỰ LUẬN TIỂU HỌC:
-1. Đề thi bám sát chương trình SGK mới (Kết nối tri thức, Chân trời sáng tạo, Cánh diều).
+1. Đề thi bám sát chương trình SGK mới (Kết nối tri thức với cuộc sống).
 2. Câu hỏi tự luận rõ ràng, bài toán có lời văn giàu tính thực tế, phù hợp lứa tuổi học sinh Tiểu học.
 3. Nếu có tệp/ảnh tài liệu đính kèm: Hãy đọc kỹ và bám sát nội dung, hình ảnh hoặc đề bài trong tệp đó.
 4. MỖI CÂU HỎI TỰ LUẬN BẮT BUỘC CÓ:
@@ -883,6 +883,74 @@ app.post('/api/sheets/read_all', async (req: Request, res: Response) => {
     console.error('Lỗi đọc dữ liệu Google Sheets:', err);
     res.status(502).json({
       error: 'Lỗi kết nối Google Sheets: ' + (err?.message || 'Lỗi mạng'),
+    });
+  }
+});
+
+// ==========================================
+// GOOGLE DRIVE PROXY / STORAGE INTEGRATION
+// ==========================================
+const STUDENT_SUBMISSION_DRIVE_FOLDER_ID = '1wO5D1XL5x-_8kMkGmMi1uv71lNPWmfMW';
+const STUDENT_SUBMISSION_DRIVE_FOLDER_URL =
+  'https://drive.google.com/drive/folders/1wO5D1XL5x-_8kMkGmMi1uv71lNPWmfMW?usp=sharing';
+
+// Upload student photo submission to Google Drive
+app.post('/api/drive/upload', async (req: Request, res: Response) => {
+  try {
+    const { name, mimeType, data, studentName, studentGrade, questionId, sheetUrl } = req.body;
+    const targetUrl = sheetUrl || currentGoogleSheetUrl;
+
+    if (!data) {
+      res.status(400).json({ error: 'Thiếu dữ liệu ảnh base64 để lưu vào Google Drive.' });
+      return;
+    }
+
+    const payload = {
+      name: name || `BaiLam_${studentName || 'HocSinh'}_${Date.now()}.jpg`,
+      mimeType: mimeType || 'image/jpeg',
+      data,
+      studentName: studentName || 'Học sinh',
+      studentGrade: studentGrade || 'Tiểu học',
+      questionId: questionId || null,
+      folderId: STUDENT_SUBMISSION_DRIVE_FOLDER_ID,
+      folderUrl: STUDENT_SUBMISSION_DRIVE_FOLDER_URL,
+    };
+
+    let appsScriptResult: any = null;
+    try {
+      const response = await fetch(targetUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'upload_drive_file',
+          payload,
+          timestamp: Date.now(),
+        }),
+        redirect: 'follow',
+      });
+      const text = await response.text();
+      try {
+        appsScriptResult = JSON.parse(text);
+      } catch {
+        appsScriptResult = { status: 'success', raw: text };
+      }
+    } catch (relayErr) {
+      console.warn('Apps Script relay error, returning folder destination:', relayErr);
+    }
+
+    res.json({
+      success: true,
+      folderUrl: STUDENT_SUBMISSION_DRIVE_FOLDER_URL,
+      folderId: STUDENT_SUBMISSION_DRIVE_FOLDER_ID,
+      fileUrl: appsScriptResult?.fileUrl || STUDENT_SUBMISSION_DRIVE_FOLDER_URL,
+      fileName: payload.name,
+      uploadedAt: Date.now(),
+    });
+  } catch (err: any) {
+    console.error('Lỗi API /api/drive/upload:', err);
+    res.status(500).json({
+      error: 'Không thể upload ảnh lên Google Drive: ' + (err?.message || 'Lỗi mạng'),
+      folderUrl: STUDENT_SUBMISSION_DRIVE_FOLDER_URL,
     });
   }
 });

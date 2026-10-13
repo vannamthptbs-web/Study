@@ -22,6 +22,13 @@ import {
   Download,
   Calendar,
   Lock,
+  Camera,
+  Image as ImageIcon,
+  ExternalLink,
+  Trash2,
+  Eye,
+  UploadCloud,
+  FolderOpen,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import {
@@ -32,10 +39,18 @@ import {
   EssayQuestion,
   QuizSubmissionResult,
   UserProfile,
+  SubmittedPhotoFile,
 } from '../types/study';
 import { SUBJECTS, GRADES } from '../data/subjects';
 import { getBankQuizzes, saveQuizResult } from '../services/storage';
-import { autoSyncQuiz, syncQuizResult, getSpreadsheetUrl } from '../services/firebaseWorkspace';
+import {
+  autoSyncQuiz,
+  syncQuizResult,
+  getSpreadsheetUrl,
+  STUDENT_SUBMISSION_DRIVE_FOLDER_URL,
+  STUDENT_SUBMISSION_DRIVE_FOLDER_ID,
+  uploadSubmissionPhoto,
+} from '../services/firebaseWorkspace';
 import { gradeEssayWithAI } from '../services/api';
 import { MarkdownContent } from './MarkdownContent';
 import { FormulaToolbar } from './FormulaToolbar';
@@ -83,9 +98,67 @@ export const StudentQuizHub: React.FC<Props> = ({
   const [quizResult, setQuizResult] = useState<QuizSubmissionResult | null>(null);
   const [syncStatus, setSyncStatus] = useState<string | null>(null);
 
+  // Photo attachments for student answer submission (Google Drive)
+  const [submittedPhotos, setSubmittedPhotos] = useState<SubmittedPhotoFile[]>([]);
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
+  const [previewModalImage, setPreviewModalImage] = useState<{ url: string; name: string } | null>(null);
+
   // Timer
   const [secondsElapsed, setSecondsElapsed] = useState(0);
   const [timerRunning, setTimerRunning] = useState(false);
+
+  // Handle photo upload / camera capture
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>, questionId?: number) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    setIsUploadingPhoto(true);
+    const newPhotos: SubmittedPhotoFile[] = [];
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      if (!file.type.startsWith('image/')) continue;
+
+      try {
+        const base64 = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        });
+
+        const rawBase64 = base64.includes(',') ? base64.split(',')[1] : base64;
+
+        const photoItem: SubmittedPhotoFile = {
+          id: `photo-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+          name: file.name || `AnhBaiLam_${submittedPhotos.length + newPhotos.length + 1}.jpg`,
+          mimeType: file.type || 'image/jpeg',
+          data: rawBase64,
+          previewUrl: base64,
+          driveFolderUrl: STUDENT_SUBMISSION_DRIVE_FOLDER_URL,
+          driveFolderId: STUDENT_SUBMISSION_DRIVE_FOLDER_ID,
+          uploadedAt: Date.now(),
+          questionId,
+        };
+
+        newPhotos.push(photoItem);
+      } catch (readErr) {
+        console.warn('Lỗi đọc ảnh bài làm:', readErr);
+      }
+    }
+
+    if (newPhotos.length > 0) {
+      setSubmittedPhotos((prev) => [...prev, ...newPhotos]);
+      onNotification(`Đã đính kèm ${newPhotos.length} ảnh bài làm! Hệ thống sẽ lưu vào Google Drive khi nộp.`);
+    }
+
+    setIsUploadingPhoto(false);
+    e.target.value = '';
+  };
+
+  const handleRemovePhoto = (id: string) => {
+    setSubmittedPhotos((prev) => prev.filter((p) => p.id !== id));
+  };
 
   // Reload bank when component mounts or changes
   useEffect(() => {
@@ -153,6 +226,7 @@ export const StudentQuizHub: React.FC<Props> = ({
     setSelectedAnswers({});
     setEssayAnswers({});
     setEssayFeedback({});
+    setSubmittedPhotos([]);
     setIsSubmitted(false);
     setQuizResult(null);
     setCurrentMcqIndex(0);
@@ -165,6 +239,7 @@ export const StudentQuizHub: React.FC<Props> = ({
   // Close active quiz
   const handleExitQuiz = () => {
     setActiveQuiz(null);
+    setSubmittedPhotos([]);
     setTimerRunning(false);
     setIsSubmitted(false);
     setQuizResult(null);
@@ -267,6 +342,24 @@ export const StudentQuizHub: React.FC<Props> = ({
       finalScore = essayMaxPoints > 0 ? Math.round(((essayPointsEarned / essayMaxPoints) * 10) * 10) / 10 : 10;
     }
 
+    // 4. Upload photo submissions to Google Drive folder
+    if (submittedPhotos.length > 0) {
+      setSyncStatus(`Đang đồng bộ ${submittedPhotos.length} ảnh bài làm lên Google Drive...`);
+      for (const photo of submittedPhotos) {
+        uploadSubmissionPhoto(
+          {
+            name: photo.name,
+            mimeType: photo.mimeType,
+            data: photo.data,
+            questionId: photo.questionId,
+          },
+          { name: currentUser.name, grade: activeQuiz.grade }
+        ).catch((err) => {
+          console.warn('Lỗi upload ảnh lên Google Drive:', err);
+        });
+      }
+    }
+
     // Build submission result
     const result: QuizSubmissionResult = {
       id: `quiz-res-${Date.now()}`,
@@ -285,6 +378,8 @@ export const StudentQuizHub: React.FC<Props> = ({
       userAnswers: selectedAnswers,
       essayAnswers: essayAnswers,
       essayFeedback: feedbackMap,
+      submittedPhotos: submittedPhotos,
+      driveFolderUrl: STUDENT_SUBMISSION_DRIVE_FOLDER_URL,
       weakSubtopics: Array.from(new Set(weakList)),
       questions,
       essayQuestions,
@@ -297,7 +392,7 @@ export const StudentQuizHub: React.FC<Props> = ({
     onQuizCompleted(result);
 
     // Auto sync to Google Sheets & Firestore
-    setSyncStatus('Đang tự động lưu kết quả vào Google Sheets...');
+    setSyncStatus('Đang tự động lưu kết quả vào Google Sheets & Google Drive...');
     autoSyncQuiz(result, currentUser);
     syncQuizResult(result, currentUser).then((syncRes) => {
       if (syncRes.sheetsSuccess || syncRes.firestoreSuccess) {
@@ -730,9 +825,98 @@ export const StudentQuizHub: React.FC<Props> = ({
                               [eq.id]: val,
                             }));
                           }}
-                          placeholder="Nhập câu lời giải, phép tính và đáp số của em vào đây..."
+                          placeholder="Nhập câu lời giải, phép tính và đáp số của em vào đây (hoặc chụp ảnh bài làm bên dưới)..."
                           className="w-full rounded-xl border border-slate-300 p-3 text-xs sm:text-sm text-slate-900 focus:outline-none focus:border-emerald-500 disabled:bg-slate-100 disabled:text-slate-700"
                         />
+                      </div>
+
+                      {/* Photo submission toolbar for this essay question */}
+                      <div className="space-y-2 pt-1 border-t border-slate-200/60">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            {!isSubmitted && (
+                              <>
+                                <label className="cursor-pointer inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-sky-50 hover:bg-sky-100 border border-sky-200 text-sky-800 font-bold text-[11px] transition-transform active:scale-95 shadow-2xs">
+                                  <Camera className="w-3.5 h-3.5 text-sky-600" />
+                                  <span>Chụp ảnh bài giải (Camera)</span>
+                                  <input
+                                    type="file"
+                                    accept="image/*"
+                                    capture="environment"
+                                    className="hidden"
+                                    onChange={(e) => handlePhotoUpload(e, eq.id)}
+                                  />
+                                </label>
+
+                                <label className="cursor-pointer inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 font-bold text-[11px] transition-transform active:scale-95 shadow-2xs">
+                                  <ImageIcon className="w-3.5 h-3.5 text-slate-500" />
+                                  <span>Chọn ảnh từ máy</span>
+                                  <input
+                                    type="file"
+                                    accept="image/*"
+                                    multiple
+                                    className="hidden"
+                                    onChange={(e) => handlePhotoUpload(e, eq.id)}
+                                  />
+                                </label>
+                              </>
+                            )}
+                          </div>
+
+                          {submittedPhotos.filter((p) => p.questionId === eq.id).length > 0 && (
+                            <span className="text-[11px] font-bold text-sky-700 bg-sky-100/70 px-2 py-0.5 rounded-md">
+                              Đã chụp: {submittedPhotos.filter((p) => p.questionId === eq.id).length} ảnh cho câu này
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Thumbnails of photos for this question */}
+                        {submittedPhotos.filter((p) => p.questionId === eq.id).length > 0 && (
+                          <div className="flex flex-wrap gap-2 pt-1">
+                            {submittedPhotos
+                              .filter((p) => p.questionId === eq.id)
+                              .map((photo) => (
+                                <div
+                                  key={photo.id}
+                                  className="relative group rounded-xl overflow-hidden border border-slate-300 bg-white shadow-2xs"
+                                >
+                                  <img
+                                    src={photo.previewUrl || `data:${photo.mimeType};base64,${photo.data}`}
+                                    alt={photo.name}
+                                    className="w-16 h-16 object-cover cursor-pointer hover:scale-105 transition-transform"
+                                    onClick={() =>
+                                      setPreviewModalImage({
+                                        url: photo.previewUrl || `data:${photo.mimeType};base64,${photo.data}`,
+                                        name: photo.name,
+                                      })
+                                    }
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setPreviewModalImage({
+                                        url: photo.previewUrl || `data:${photo.mimeType};base64,${photo.data}`,
+                                        name: photo.name,
+                                      })
+                                    }
+                                    className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition-opacity"
+                                  >
+                                    <Eye className="w-4 h-4" />
+                                  </button>
+                                  {!isSubmitted && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleRemovePhoto(photo.id)}
+                                      className="absolute top-0.5 right-0.5 p-1 rounded-full bg-rose-600 text-white shadow-xs"
+                                      title="Xóa ảnh"
+                                    >
+                                      <X className="w-2.5 h-2.5" />
+                                    </button>
+                                  )}
+                                </div>
+                              ))}
+                          </div>
+                        )}
                       </div>
 
                       {/* Submission Feedback & Sample Answer */}
@@ -772,6 +956,147 @@ export const StudentQuizHub: React.FC<Props> = ({
             </div>
           )}
 
+          {/* PART 3: CHỤP ẢNH & ĐÍNH KÈM BÀI LÀM TRÊN GIẤY / VỞ GHI (LƯU VÀO GOOGLE DRIVE) */}
+          <div className="p-6 bg-slate-50 border-t border-slate-200 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className="w-7 h-7 rounded-lg bg-sky-600 text-white font-extrabold text-xs flex items-center justify-center">
+                    <Camera className="w-4 h-4" />
+                  </span>
+                  <h4 className="font-extrabold text-sm sm:text-base text-slate-900">
+                    Chụp ảnh bài làm & Bài giải viết tay
+                  </h4>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-sky-100 text-sky-800 border border-sky-200">
+                    Lưu vào Google Drive
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500 leading-relaxed">
+                  Em có thể dùng camera điện thoại chụp ảnh bài giải trên vở hoặc giấy nháp để gửi cho Thầy/Cô. Mọi ảnh sẽ được tự động lưu vào Google Drive:
+                </p>
+              </div>
+
+              {/* Link to target Google Drive folder */}
+              <a
+                href={STUDENT_SUBMISSION_DRIVE_FOLDER_URL}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white hover:bg-sky-50 border border-sky-300 text-xs font-bold text-sky-700 transition-colors shadow-2xs shrink-0"
+              >
+                <FolderOpen className="w-4 h-4 text-sky-600" />
+                <span>Mở thư mục Google Drive</span>
+                <ExternalLink className="w-3 h-3 text-slate-400" />
+              </a>
+            </div>
+
+            {/* Camera / Upload buttons */}
+            {!isSubmitted && (
+              <div className="flex flex-wrap items-center gap-3 pt-1">
+                {/* Direct Camera button */}
+                <label className="cursor-pointer inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs shadow-xs transition-transform active:scale-95">
+                  <Camera className="w-4 h-4" />
+                  <span>Chụp ảnh ngay (Camera)</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    className="hidden"
+                    onChange={(e) => handlePhotoUpload(e)}
+                  />
+                </label>
+
+                {/* Gallery / File picker button */}
+                <label className="cursor-pointer inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 font-bold text-xs shadow-2xs transition-transform active:scale-95">
+                  <ImageIcon className="w-4 h-4 text-slate-500" />
+                  <span>Chọn ảnh từ thiết bị</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    className="hidden"
+                    onChange={(e) => handlePhotoUpload(e)}
+                  />
+                </label>
+
+                {isUploadingPhoto && (
+                  <span className="text-xs font-semibold text-sky-700 animate-pulse flex items-center gap-1.5">
+                    <UploadCloud className="w-4 h-4 animate-bounce" />
+                    Đang xử lý ảnh bài làm...
+                  </span>
+                )}
+              </div>
+            )}
+
+            {/* Gallery of all attached photos */}
+            {submittedPhotos.length > 0 ? (
+              <div className="space-y-2 pt-2">
+                <div className="flex items-center justify-between text-xs text-slate-600 font-bold">
+                  <span>Ảnh bài làm đã đính kèm ({submittedPhotos.length} ảnh):</span>
+                  <span className="text-sky-600">Sẵn sàng lưu vào Google Drive khi nộp</span>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-3">
+                  {submittedPhotos.map((photo, pIdx) => (
+                    <div
+                      key={photo.id}
+                      className="relative group rounded-xl overflow-hidden border border-slate-200 bg-white shadow-2xs hover:shadow-md transition-all"
+                    >
+                      <img
+                        src={photo.previewUrl || `data:${photo.mimeType};base64,${photo.data}`}
+                        alt={photo.name}
+                        className="w-full h-24 object-cover cursor-pointer"
+                        onClick={() =>
+                          setPreviewModalImage({
+                            url: photo.previewUrl || `data:${photo.mimeType};base64,${photo.data}`,
+                            name: photo.name,
+                          })
+                        }
+                      />
+                      <div className="p-2 space-y-0.5">
+                        <p className="text-[11px] font-bold text-slate-800 truncate" title={photo.name}>
+                          {photo.name}
+                        </p>
+                        <span className="text-[10px] text-sky-600 font-semibold block">
+                          {photo.questionId ? `Câu TL ${photo.questionId}` : `Ảnh bài làm ${pIdx + 1}`}
+                        </span>
+                      </div>
+
+                      {/* View zoom button */}
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setPreviewModalImage({
+                            url: photo.previewUrl || `data:${photo.mimeType};base64,${photo.data}`,
+                            name: photo.name,
+                          })
+                        }
+                        className="absolute top-1.5 left-1.5 p-1 rounded-md bg-black/60 text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                        title="Xem ảnh phóng to"
+                      >
+                        <Eye className="w-3.5 h-3.5" />
+                      </button>
+
+                      {/* Delete button (if not submitted) */}
+                      {!isSubmitted && (
+                        <button
+                          type="button"
+                          onClick={() => handleRemovePhoto(photo.id)}
+                          className="absolute top-1.5 right-1.5 p-1 rounded-md bg-rose-600 text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                          title="Xóa ảnh này"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="p-4 rounded-xl border border-dashed border-slate-300 bg-white/70 text-center text-xs text-slate-500">
+                Chưa có ảnh nào được đính kèm. Em có thể bấm "Chụp ảnh ngay (Camera)" để chụp ảnh bài làm trên vở hoặc giấy nháp.
+              </div>
+            )}
+          </div>
+
           {/* SUBMIT BUTTON BAR (WHEN NOT SUBMITTED) */}
           {!isSubmitted && (
             <div className="p-6 bg-slate-50 border-t border-slate-200 flex flex-wrap items-center justify-between gap-3">
@@ -794,7 +1119,7 @@ export const StudentQuizHub: React.FC<Props> = ({
             </div>
           )}
 
-          {/* SCORECARD AND GOOGLE SHEETS SYNC RESULTS (WHEN SUBMITTED) */}
+          {/* SCORECARD AND GOOGLE SHEETS & DRIVE SYNC RESULTS (WHEN SUBMITTED) */}
           {isSubmitted && quizResult && (
             <div className="p-6 sm:p-8 bg-gradient-to-br from-indigo-50/80 via-white to-emerald-50/60 border-t border-slate-200 space-y-6">
               <div className="max-w-xl mx-auto text-center space-y-3">
@@ -813,6 +1138,54 @@ export const StudentQuizHub: React.FC<Props> = ({
                   <div className="p-3 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold flex items-center justify-center gap-2 shadow-2xs">
                     <Sheet className="w-4 h-4 text-emerald-600 shrink-0" />
                     <span>{syncStatus}</span>
+                  </div>
+                )}
+
+                {/* Submitted Photos Display & Link to Google Drive */}
+                {quizResult.submittedPhotos && quizResult.submittedPhotos.length > 0 && (
+                  <div className="p-4 rounded-2xl bg-white border border-slate-200 text-left space-y-3 shadow-2xs mt-4">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <span className="p-1.5 rounded-lg bg-sky-100 text-sky-800">
+                          <Camera className="w-4 h-4" />
+                        </span>
+                        <h4 className="font-extrabold text-xs sm:text-sm text-slate-900">
+                          Ảnh bài làm đã nộp ({quizResult.submittedPhotos.length} ảnh)
+                        </h4>
+                      </div>
+                      <a
+                        href={STUDENT_SUBMISSION_DRIVE_FOLDER_URL}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-sky-600 hover:bg-sky-700 text-white text-xs font-bold shadow-xs transition-colors"
+                      >
+                        <FolderOpen className="w-3.5 h-3.5" />
+                        <span>Mở thư mục Google Drive</span>
+                        <ExternalLink className="w-3 h-3" />
+                      </a>
+                    </div>
+
+                    <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 pt-1">
+                      {quizResult.submittedPhotos.map((photo) => (
+                        <div
+                          key={photo.id}
+                          className="rounded-lg overflow-hidden border border-slate-200 cursor-pointer hover:ring-2 hover:ring-sky-500 transition-all bg-slate-50"
+                          onClick={() =>
+                            setPreviewModalImage({
+                              url: photo.previewUrl || `data:${photo.mimeType};base64,${photo.data}`,
+                              name: photo.name,
+                            })
+                          }
+                        >
+                          <img
+                            src={photo.previewUrl || `data:${photo.mimeType};base64,${photo.data}`}
+                            alt={photo.name}
+                            className="w-full h-16 object-cover"
+                          />
+                          <p className="text-[10px] text-slate-600 truncate p-1 font-semibold">{photo.name}</p>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 )}
 
@@ -1002,6 +1375,37 @@ export const StudentQuizHub: React.FC<Props> = ({
                 })}
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Preview Modal for Uploaded Photos */}
+      {previewModalImage && (
+        <div
+          className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4 backdrop-blur-xs"
+          onClick={() => setPreviewModalImage(null)}
+        >
+          <div
+            className="relative max-w-3xl max-h-[90vh] bg-white rounded-2xl overflow-hidden shadow-2xl flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-3 bg-slate-900 text-white flex items-center justify-between text-xs font-bold">
+              <span className="truncate pr-4">{previewModalImage.name}</span>
+              <button
+                type="button"
+                onClick={() => setPreviewModalImage(null)}
+                className="p-1 rounded-lg hover:bg-white/20 text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="p-2 overflow-auto flex items-center justify-center bg-slate-950">
+              <img
+                src={previewModalImage.url}
+                alt={previewModalImage.name}
+                className="max-h-[75vh] w-auto object-contain rounded-lg"
+              />
+            </div>
           </div>
         </div>
       )}

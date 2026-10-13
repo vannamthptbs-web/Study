@@ -105,6 +105,19 @@ export interface QuizData {
   essayQuestions?: EssayQuestion[];
 }
 
+export interface SubmittedPhotoFile {
+  id: string;
+  name: string;
+  mimeType: string;
+  data: string; // base64
+  previewUrl?: string;
+  driveFileUrl?: string;
+  driveFolderUrl?: string;
+  driveFolderId?: string;
+  uploadedAt: number;
+  questionId?: number;
+}
+
 export interface QuizSubmissionResult {
   id: string;
   timestamp: number;
@@ -122,6 +135,8 @@ export interface QuizSubmissionResult {
   userAnswers: Record<number, string>; // question id -> selected option letter
   essayAnswers?: Record<number, string>; // question id -> student essay answer
   essayFeedback?: Record<number, { score: number; comment: string }>;
+  submittedPhotos?: SubmittedPhotoFile[];
+  driveFolderUrl?: string;
   weakSubtopics: string[];
   questions: QuizQuestion[];
   essayQuestions?: EssayQuestion[];

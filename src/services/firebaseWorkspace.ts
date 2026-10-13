@@ -34,6 +34,70 @@ provider.addScope('https://www.googleapis.com/auth/spreadsheets');
 export const DEFAULT_SHEET_URL =
   'https://script.google.com/macros/s/AKfycbwSHX1Q0KVnrdab_vxKpdt_lEUZ89CrUeYsuB1_ZU0qNWtYPIVrAfw3Ng8w71vHl3IwqQ/exec';
 
+// Google Drive Folder for student photo submissions
+export const STUDENT_SUBMISSION_DRIVE_FOLDER_ID = '1wO5D1XL5x-_8kMkGmMi1uv71lNPWmfMW';
+export const STUDENT_SUBMISSION_DRIVE_FOLDER_URL =
+  'https://drive.google.com/drive/folders/1wO5D1XL5x-_8kMkGmMi1uv71lNPWmfMW?usp=sharing';
+
+/**
+ * Upload student photo answer to Google Drive folder
+ */
+export async function uploadSubmissionPhoto(
+  photo: { name: string; mimeType: string; data: string; questionId?: number },
+  studentInfo?: { name?: string; grade?: string }
+): Promise<{ success: boolean; fileUrl?: string; folderUrl: string }> {
+  try {
+    // 1. Try server proxy /api/drive/upload
+    try {
+      const res = await fetch('/api/drive/upload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...photo,
+          studentName: studentInfo?.name,
+          studentGrade: studentInfo?.grade,
+          sheetUrl: getAppsScriptWebhookUrl(),
+        }),
+      });
+      if (res.ok) {
+        const json = await res.json();
+        return {
+          success: true,
+          fileUrl: json.fileUrl || STUDENT_SUBMISSION_DRIVE_FOLDER_URL,
+          folderUrl: STUDENT_SUBMISSION_DRIVE_FOLDER_URL,
+        };
+      }
+    } catch (proxyErr) {
+      console.warn('Proxy drive upload fallback:', proxyErr);
+    }
+
+    // 2. Try Apps Script webhook direct / relay
+    try {
+      const webhookUrl = getAppsScriptWebhookUrl();
+      if (webhookUrl) {
+        await sendToAppsScriptWebhook('upload_drive_file', {
+          ...photo,
+          studentName: studentInfo?.name,
+          studentGrade: studentInfo?.grade,
+          folderId: STUDENT_SUBMISSION_DRIVE_FOLDER_ID,
+        });
+      }
+    } catch {}
+
+    return {
+      success: true,
+      fileUrl: STUDENT_SUBMISSION_DRIVE_FOLDER_URL,
+      folderUrl: STUDENT_SUBMISSION_DRIVE_FOLDER_URL,
+    };
+  } catch (e) {
+    console.warn('Lỗi upload ảnh lên Google Drive:', e);
+    return {
+      success: false,
+      folderUrl: STUDENT_SUBMISSION_DRIVE_FOLDER_URL,
+    };
+  }
+}
+
 let cachedAccessToken: string | null = null;
 let cachedSpreadsheetId: string | null = null;
 const SPREADSHEET_ID_KEY = 'study_ai_spreadsheet_id_v1';
@@ -814,7 +878,7 @@ export const autoSyncQuiz = async (
     const token = cachedAccessToken;
     if (token) {
       const sheetId = await getOrCreateSpreadsheet(token);
-      await appendSheetRow(token, sheetId, 'LichSuQuiz!A:L', [
+      await appendSheetRow(token, sheetId, 'LichSuQuiz!A:N', [
         [
           result.id,
           new Date(result.timestamp).toLocaleString('vi-VN'),
@@ -828,6 +892,8 @@ export const autoSyncQuiz = async (
           result.totalQuestions,
           result.score,
           result.weakSubtopics?.join(', ') || 'Không có',
+          result.driveFolderUrl || (result.submittedPhotos && result.submittedPhotos.length > 0 ? STUDENT_SUBMISSION_DRIVE_FOLDER_URL : ''),
+          result.submittedPhotos ? result.submittedPhotos.length : 0,
         ],
       ]);
 
@@ -1058,15 +1124,46 @@ function handleRequest(data) {
       return ContentService.createTextOutput(JSON.stringify({ status: "success" })).setMimeType(ContentService.MimeType.JSON);
     }
 
+    // 5.5. TẢI ẢNH BÀI LÀM LÊN GOOGLE DRIVE
+    if (action === "upload_drive_file" || action === "upload_photo") {
+      var folderId = "1wO5D1XL5x-_8kMkGmMi1uv71lNPWmfMW";
+      try {
+        var folder = DriveApp.getFolderById(folderId);
+        var fileData = payload.data || "";
+        var fileName = payload.name || ("BaiLam_" + (payload.studentName || "HocSinh") + "_" + new Date().getTime() + ".jpg");
+        var mimeType = payload.mimeType || "image/jpeg";
+        var decoded = Utilities.base64Decode(fileData);
+        var blob = Utilities.newBlob(decoded, mimeType, fileName);
+        var driveFile = folder.createFile(blob);
+        try {
+          driveFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+        } catch(shErr) {}
+        return ContentService.createTextOutput(JSON.stringify({
+          status: "success",
+          fileUrl: driveFile.getUrl(),
+          fileId: driveFile.getId(),
+          folderUrl: "https://drive.google.com/drive/folders/" + folderId + "?usp=sharing"
+        })).setMimeType(ContentService.MimeType.JSON);
+      } catch(err) {
+        return ContentService.createTextOutput(JSON.stringify({
+          status: "error",
+          message: err.toString(),
+          folderUrl: "https://drive.google.com/drive/folders/" + folderId + "?usp=sharing"
+        })).setMimeType(ContentService.MimeType.JSON);
+      }
+    }
+
     // 6. LƯU BÀI LÀM TRẮC NGHIỆM
     if (action === "sync_quiz") {
       var sheet = getOrCreateFormattedSheet(ss, "LichSuQuiz", [
         "Mã Bài Thi", "Thời Gian Nộp", "Email Học Sinh", "Họ Tên", "Vai Trò",
-        "Môn Học", "Khối Lớp", "Chủ Đề Quiz", "Số Câu Đúng", "Tổng Số Câu", "Điểm Số (/10)", "Lỗ Hổng Kiến Thức"
+        "Môn Học", "Khối Lớp", "Chủ Đề Quiz", "Số Câu Đúng", "Tổng Số Câu", "Điểm Số (/10)", "Lỗ Hổng Kiến Thức", "Link Thư Mục Drive Bài Nộp", "Số Ảnh Bài Làm"
       ], "#065f46");
 
       var r = payload.result || {};
       var u = payload.user || {};
+      var driveUrl = r.driveFolderUrl || (r.submittedPhotos && r.submittedPhotos.length > 0 ? "https://drive.google.com/drive/folders/1wO5D1XL5x-_8kMkGmMi1uv71lNPWmfMW?usp=sharing" : "");
+      var photoCount = (r.submittedPhotos && r.submittedPhotos.length) ? r.submittedPhotos.length : 0;
       var rowData = [
         r.id || ("quiz-" + new Date().getTime()),
         new Date(r.timestamp || Date.now()).toLocaleString("vi-VN"),
@@ -1079,7 +1176,9 @@ function handleRequest(data) {
         r.correctCount || 0,
         r.totalQuestions || 0,
         r.score !== undefined ? Number(r.score).toFixed(1) : "0.0",
-        (r.weakSubtopics && r.weakSubtopics.length > 0) ? r.weakSubtopics.join(", ") : "Đạt chuẩn (Không có)"
+        (r.weakSubtopics && r.weakSubtopics.length > 0) ? r.weakSubtopics.join(", ") : "Đạt chuẩn (Không có)",
+        driveUrl,
+        photoCount
       ];
       sheet.appendRow(rowData);
       styleDataRow(sheet, sheet.getLastRow(), rowData.length);

@@ -130,7 +130,7 @@ export const UserGuide: React.FC<Props> = ({ setActiveTab, onOpenAuth, currentUs
               🎒 Dành cho Lớp 1 - Lớp 5
             </span>
             <span className="px-3 py-1.5 rounded-xl bg-white/10 border border-white/10 font-medium">
-              📖 Chuẩn SGK GDPT 2018 (Kết nối tri thức, Chân trời, Cánh diều)
+              📖 Chuẩn SGK GDPT 2018 (Kết nối tri thức với cuộc sống)
             </span>
             <span className="px-3 py-1.5 rounded-xl bg-emerald-500/20 text-emerald-200 border border-emerald-400/30 font-semibold flex items-center gap-1.5">
               <Database className="w-3.5 h-3.5 text-emerald-300" />

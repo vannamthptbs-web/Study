@@ -601,9 +601,10 @@ export const UserGuide: React.FC<Props> = ({ setActiveTab, onOpenAuth, currentUs
                 <span>Dành Cho Học Sinh (Làm Bài Thi)</span>
               </h3>
               <ul className="space-y-1.5 list-disc list-inside">
-                <li>Lựa chọn môn học, khối lớp và chủ đề muốn luyện tập.</li>
-                <li>Làm bài trắc nghiệm có đồng hồ bấm giờ tính thời gian.</li>
-                <li>Chấm điểm tự động trên thang điểm 10, hiển thị đáp án đúng và lời giải thích chi tiết từng câu.</li>
+                <li>Lựa chọn môn học, khối lớp và làm các bộ đề thi chuẩn do Thầy/Cô biên soạn.</li>
+                <li>Làm bài trắc nghiệm, bài giải tự luận và chụp ảnh bài làm trên vở ghi gửi trực tiếp qua camera/file.</li>
+                <li>Ảnh bài làm được tự động lưu an toàn vào Google Drive của hệ thống.</li>
+                <li>Thầy/Cô trực tiếp xem bài làm và ảnh vở ghi để chấm điểm và nhận xét chi tiết (AI không tự động chấm).</li>
                 <li>
                   Tự động phát hiện <strong>lỗ hổng kiến thức</strong> (các câu làm sai) và lưu vào hồ sơ cá nhân.
                 </li>
@@ -617,20 +618,23 @@ export const UserGuide: React.FC<Props> = ({ setActiveTab, onOpenAuth, currentUs
             <div className="p-5 rounded-2xl bg-emerald-50/60 border border-emerald-200 space-y-3">
               <h3 className="font-bold text-emerald-900 text-sm flex items-center gap-2">
                 <Users className="w-4 h-4 text-emerald-700" />
-                <span>Dành Cho Giáo Viên (Soạn Đề & Ngân Hàng Đề)</span>
+                <span>Dành Cho Giáo Viên (Soạn Đề & Chấm Bài)</span>
               </h3>
               <ul className="space-y-1.5 list-disc list-inside text-emerald-950">
                 <li>
-                  Bật công tắc <strong>"Chế độ Giáo viên soạn đề"</strong>.
+                  Bật <strong>"Soạn đề thi"</strong> để tạo đề trắc nghiệm và tự luận toàn diện chuẩn SGK Kết nối tri thức.
                 </li>
                 <li>
-                  Dùng trợ lý AI sinh đề thi ma trận chuẩn theo chủ đề hoặc tự chỉnh sửa từng câu hỏi, đáp án A-B-C-D.
+                  Vào mục <strong>"Chấm bài học sinh"</strong> để trực tiếp xem bài làm trắc nghiệm, bài giải tự luận và ảnh chụp vở ghi của học sinh.
+                </li>
+                <li>
+                  Thầy/Cô nhập điểm số và lời phê chi tiết cho từng học sinh mà không dùng AI chấm tự động.
                 </li>
                 <li>
                   Nhấn <strong>"Lưu vào Ngân hàng đề thi"</strong>: đề thi được ghi trực tiếp vào Google Sheets tab{' '}
                   <code>NganHangDeThi</code>.
                 </li>
-                <li>Đề thi trong ngân hàng sẽ hiển thị cho học sinh trên toàn trường cùng tham gia luyện tập!</li>
+                <li>Đề thi trong ngân hàng sẽ hiển thị cho học sinh đúng khối lớp cùng tham gia luyện tập!</li>
               </ul>
             </div>
           </div>

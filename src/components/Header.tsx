@@ -16,10 +16,12 @@ import {
   LogOut,
   HelpCircle,
   FolderOpen,
+  ClipboardCheck,
 } from 'lucide-react';
 import { Grade, ActiveTab, UserProfile } from '../types/study';
 import { GRADES } from '../data/subjects';
 import { getSpreadsheetUrl } from '../services/firebaseWorkspace';
+import { getPendingSubmissionsCount } from '../services/storage';
 
 interface Props {
   activeTab: ActiveTab;
@@ -76,6 +78,16 @@ export const Header: React.FC<Props> = ({
       icon: BarChart3,
       badge: 'Lỗ hổng & Điểm',
     },
+    ...(profile.role === 'teacher' || profile.role === 'admin'
+      ? [
+          {
+            id: 'grading' as ActiveTab,
+            label: 'Chấm bài HS',
+            icon: ClipboardCheck,
+            badge: getPendingSubmissionsCount() > 0 ? `${getPendingSubmissionsCount()} bài chờ` : 'Chấm điểm',
+          },
+        ]
+      : []),
     ...(profile.role === 'admin'
       ? [
           {

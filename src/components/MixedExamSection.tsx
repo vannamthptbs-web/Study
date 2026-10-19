@@ -323,6 +323,7 @@ export const MixedExamSection: React.FC<Props> = ({
       grade: activeExam.grade || selectedGrade,
       topic: activeExam.topic || 'Đề toàn diện',
       examFormat: 'mixed',
+      status: 'pending_grading',
       score: finalScore,
       correctCount: mcqCorrect,
       totalQuestions: (activeExam.questions?.length || 0) + (activeExam.essayQuestions?.length || 0),
@@ -339,7 +340,7 @@ export const MixedExamSection: React.FC<Props> = ({
     autoSyncQuiz(submissionResult, currentUser);
     syncQuizResult(submissionResult, currentUser).catch(() => {});
 
-    onNotification(`Đã nộp bài thi thành công! Điểm số: ${finalScore}/10. Kết quả đã lưu Google Sheets! 📊`);
+    onNotification('Đã nộp bài thi thành công! Thầy/Cô sẽ trực tiếp xem bài làm và ảnh chụp vở ghi để chấm điểm cho em. 📊');
   };
 
   // Calculate scores

@@ -29,6 +29,9 @@ import {
   Eye,
   UploadCloud,
   FolderOpen,
+  Clock,
+  ClipboardCheck,
+  ChevronRight,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import {
@@ -42,7 +45,7 @@ import {
   SubmittedPhotoFile,
 } from '../types/study';
 import { SUBJECTS, GRADES } from '../data/subjects';
-import { getBankQuizzes, saveQuizResult } from '../services/storage';
+import { getBankQuizzes, saveQuizResult, getAllQuizHistory } from '../services/storage';
 import {
   autoSyncQuiz,
   syncQuizResult,
@@ -51,7 +54,6 @@ import {
   STUDENT_SUBMISSION_DRIVE_FOLDER_ID,
   uploadSubmissionPhoto,
 } from '../services/firebaseWorkspace';
-import { gradeEssayWithAI } from '../services/api';
 import { MarkdownContent } from './MarkdownContent';
 import { FormulaToolbar } from './FormulaToolbar';
 
@@ -84,6 +86,10 @@ export const StudentQuizHub: React.FC<Props> = ({
   const [bankList, setBankList] = useState<SavedBankQuiz[]>(getBankQuizzes());
   const [subjectFilter, setSubjectFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Tab for student: 'available_quizzes' (danh sách đề thi) or 'my_submissions' (bài thi đã nộp)
+  const [studentTab, setStudentTab] = useState<'available_quizzes' | 'my_submissions'>('available_quizzes');
+  const [reviewingSubmission, setReviewingSubmission] = useState<QuizSubmissionResult | null>(null);
 
   // Active quiz being taken by student
   const [activeQuiz, setActiveQuiz] = useState<SavedBankQuiz | null>(null);
@@ -220,6 +226,17 @@ export const StudentQuizHub: React.FC<Props> = ({
     });
   }, [bankList, selectedGrade, subjectFilter, searchQuery]);
 
+  // List of submissions for this student
+  const mySubmissions = useMemo(() => {
+    const list = getAllQuizHistory();
+    if (!currentUser || currentUser.isGuest) {
+      return list;
+    }
+    return list.filter(
+      (s) => s.userId === currentUser.id || s.userEmail === currentUser.email || s.userName === currentUser.name
+    );
+  }, [currentUser, isSubmitted]);
+
   // Start taking a quiz
   const handleStartQuiz = (quiz: SavedBankQuiz) => {
     setActiveQuiz(quiz);
@@ -278,71 +295,12 @@ export const StudentQuizHub: React.FC<Props> = ({
       }
     });
 
-    // 2. Grade Essays (if any)
-    const feedbackMap: Record<number, { score: number; comment: string }> = {};
-    let essayPointsEarned = 0;
-    let essayMaxPoints = 0;
-
-    if (essayQuestions.length > 0) {
-      setIsGradingEssay(true);
-      for (const eq of essayQuestions) {
-        const studentText = (essayAnswers[eq.id] || '').trim();
-        const maxPts = eq.points || 5;
-        essayMaxPoints += maxPts;
-
-        if (!studentText) {
-          feedbackMap[eq.id] = {
-            score: 0,
-            comment: 'Chưa có bài giải tự luận.',
-          };
-        } else {
-          try {
-            const graded = await gradeEssayWithAI(
-              eq.question,
-              eq.sampleAnswer,
-              eq.rubric || 'Đúng câu lời giải, phép tính và đáp số',
-              studentText,
-              maxPts,
-              activeQuiz.grade,
-              activeQuiz.subject
-            );
-            feedbackMap[eq.id] = graded;
-            essayPointsEarned += graded.score || 0;
-          } catch {
-            // Fallback rubric scoring based on keywords
-            const sampleLen = (eq.sampleAnswer || '').length;
-            const textLen = studentText.length;
-            const ratio = Math.min(textLen / Math.max(sampleLen, 50), 1.0);
-            const scoreCalc = Math.round(maxPts * Math.max(ratio * 0.8, 0.4) * 10) / 10;
-            feedbackMap[eq.id] = {
-              score: scoreCalc,
-              comment: 'Bài giải đã bám sát câu hỏi và lời giải chi tiết của Thầy/Cô.',
-            };
-            essayPointsEarned += scoreCalc;
-          }
-        }
-      }
-      setEssayFeedback(feedbackMap);
-      setIsGradingEssay(false);
-    }
-
-    // 3. Compute final weighted score on scale 10
-    let finalScore = 10;
+    // 2. Tự luận & Ảnh bài làm viết tay: KHÔNG DÙNG AI CHẤM TỰ ĐỘNG
+    // Theo yêu cầu sư phạm, bài thi sẽ được chuyển trực tiếp tới Thầy/Cô để Thầy/Cô tự xem và chấm điểm.
     const hasMcq = questions.length > 0;
     const hasEssay = essayQuestions.length > 0;
 
-    if (hasMcq && hasEssay) {
-      // 50% MCQ, 50% Essay
-      const mcqScore = (mcqCorrect / questions.length) * 5;
-      const essayScore = essayMaxPoints > 0 ? (essayPointsEarned / essayMaxPoints) * 5 : 5;
-      finalScore = Math.round((mcqScore + essayScore) * 10) / 10;
-    } else if (hasMcq) {
-      finalScore = Math.round(((mcqCorrect / questions.length) * 10) * 10) / 10;
-    } else if (hasEssay) {
-      finalScore = essayMaxPoints > 0 ? Math.round(((essayPointsEarned / essayMaxPoints) * 10) * 10) / 10 : 10;
-    }
-
-    // 4. Upload photo submissions to Google Drive folder
+    // 3. Upload photo submissions to Google Drive folder
     if (submittedPhotos.length > 0) {
       setSyncStatus(`Đang đồng bộ ${submittedPhotos.length} ảnh bài làm lên Google Drive...`);
       for (const photo of submittedPhotos) {
@@ -360,24 +318,25 @@ export const StudentQuizHub: React.FC<Props> = ({
       }
     }
 
-    // Build submission result
+    // Build submission result with status: 'pending_grading'
     const result: QuizSubmissionResult = {
       id: `quiz-res-${Date.now()}`,
       timestamp: Date.now(),
-      userId: currentUser.id,
-      userName: currentUser.name,
-      userEmail: currentUser.email,
-      userRole: currentUser.role,
+      userId: currentUser.id || `hs-${Date.now()}`,
+      userName: currentUser.name || 'Học sinh',
+      userEmail: currentUser.email || '',
+      userRole: currentUser.role || 'student',
       subject: activeQuiz.subject,
       grade: activeQuiz.grade,
       topic: activeQuiz.topic,
       examFormat: activeQuiz.examFormat || (hasMcq && hasEssay ? 'mixed' : hasEssay ? 'essay' : 'multiple_choice'),
-      score: finalScore,
+      status: 'pending_grading', // Chờ Giáo viên trực tiếp chấm điểm
+      score: 0, // Điểm chính thức sẽ do Thầy/Cô chấm
       correctCount: mcqCorrect,
       totalQuestions: questions.length + essayQuestions.length,
       userAnswers: selectedAnswers,
       essayAnswers: essayAnswers,
-      essayFeedback: feedbackMap,
+      essayFeedback: {}, // Thầy/Cô sẽ điền khi chấm bài
       submittedPhotos: submittedPhotos,
       driveFolderUrl: STUDENT_SUBMISSION_DRIVE_FOLDER_URL,
       weakSubtopics: Array.from(new Set(weakList)),
@@ -402,18 +361,15 @@ export const StudentQuizHub: React.FC<Props> = ({
       }
     });
 
-    // Confetti celebration if score >= 8
-    if (finalScore >= 8) {
-      try {
-        confetti({
-          particleCount: 120,
-          spread: 75,
-          origin: { y: 0.6 },
-        });
-      } catch {}
-    }
+    try {
+      confetti({
+        particleCount: 80,
+        spread: 60,
+        origin: { y: 0.6 },
+      });
+    } catch {}
 
-    onNotification(`Đã hoàn thành bài thi: ${finalScore}/10 điểm! 🌟`);
+    onNotification('Đã nộp bài thi thành công! Bài làm và ảnh chụp vở ghi đã được chuyển cho Thầy/Cô trực tiếp chấm điểm. 📝');
   };
 
   const getChoiceLetter = (optStr: string, idx: number) => {
@@ -442,7 +398,7 @@ export const StudentQuizHub: React.FC<Props> = ({
             </h2>
             <p className="text-sky-100 text-xs sm:text-sm leading-relaxed">
               Dành riêng cho học sinh: Em chỉ cần chọn <strong>Khối lớp</strong> để xem các bộ đề thi trắc nghiệm & tự luận do Thầy/Cô đã biên soạn.
-              Sau khi nộp bài, hệ thống sẽ <strong>chấm điểm tự động</strong> và <strong>lưu kết quả vào Google Sheets</strong>.
+              Sau khi nộp bài, <strong>Thầy/Cô sẽ trực tiếp xem bài làm, bài giải tự luận và ảnh chụp vở ghi để chấm điểm cho em (AI không tự động chấm theo chuẩn sư phạm)</strong>. Mọi ảnh bài làm được lưu an toàn vào <strong>Google Drive</strong> và điểm số được đồng bộ vào <strong>Google Sheets</strong>.
             </p>
           </div>
 
@@ -466,6 +422,46 @@ export const StudentQuizHub: React.FC<Props> = ({
               </button>
             )}
           </div>
+        </div>
+
+        {/* Navigation Tabs for Student: Danh sách đề thi vs Bài thi đã nộp */}
+        <div className="mt-5 pt-4 border-t border-white/15 flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              setStudentTab('available_quizzes');
+              setReviewingSubmission(null);
+            }}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+              studentTab === 'available_quizzes' && !reviewingSubmission
+                ? 'bg-amber-400 text-slate-950 shadow-md font-black ring-2 ring-amber-300'
+                : 'bg-white/15 text-white hover:bg-white/25'
+            }`}
+          >
+            <BookOpenCheck className="w-3.5 h-3.5" />
+            <span>Bộ đề luyện thi ({teacherQuizzesForGrade.length})</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setStudentTab('my_submissions');
+              setActiveQuiz(null);
+            }}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+              studentTab === 'my_submissions'
+                ? 'bg-amber-400 text-slate-950 shadow-md font-black ring-2 ring-amber-300'
+                : 'bg-white/15 text-white hover:bg-white/25'
+            }`}
+          >
+            <ClipboardCheck className="w-3.5 h-3.5" />
+            <span>Bài thi đã nộp của em ({mySubmissions.length})</span>
+            {mySubmissions.filter((s) => s.status === 'pending_grading').length > 0 && (
+              <span className="px-2 py-0.5 rounded-full bg-rose-500 text-white text-[10px] font-black animate-pulse">
+                {mySubmissions.filter((s) => s.status === 'pending_grading').length} chờ chấm
+              </span>
+            )}
+          </button>
         </div>
 
         {/* 2. CHỌN KHỐI LỚP (GRADE SELECTOR) - THE ONLY INPUT FOR STUDENTS */}
@@ -562,7 +558,7 @@ export const StudentQuizHub: React.FC<Props> = ({
                   onClick={handleSubmitQuiz}
                   className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs sm:text-sm shadow-sm transition-all hover:scale-102"
                 >
-                  Nộp bài chấm điểm
+                  Nộp bài cho Thầy/Cô chấm
                 </button>
               ) : (
                 <button
@@ -923,14 +919,19 @@ export const StudentQuizHub: React.FC<Props> = ({
                       {isSubmitted && (
                         <div className="space-y-3 pt-2">
                           {/* Score and feedback */}
-                          {fb && (
+                          {quizResult?.status === 'pending_grading' ? (
+                            <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-900 flex items-center gap-2 font-medium">
+                              <Clock className="w-4 h-4 text-amber-600 shrink-0" />
+                              <span>Câu này đang chờ Thầy/Cô trực tiếp xem bài và chấm điểm (AI không tự động chấm).</span>
+                            </div>
+                          ) : fb ? (
                             <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-950 space-y-1">
                               <div className="flex items-center justify-between font-bold">
-                                <span>Điểm tự luận: {fb.score}/{eq.points || 5} điểm</span>
+                                <span>Điểm Thầy/Cô chấm câu này: {fb.score}/{eq.points || 5} điểm</span>
                               </div>
-                              <p className="text-slate-700">{fb.comment}</p>
+                              {fb.comment && <p className="text-slate-700">{fb.comment}</p>}
                             </div>
-                          )}
+                          ) : null}
 
                           {/* Teacher's Sample Answer */}
                           <div className="p-3.5 rounded-xl bg-white border border-slate-200 text-xs space-y-1.5">
@@ -1108,14 +1109,17 @@ export const StudentQuizHub: React.FC<Props> = ({
                 Trở lại danh sách đề
               </button>
 
-              <button
-                type="button"
-                onClick={handleSubmitQuiz}
-                className="px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-sm shadow-sm transition-all hover:scale-102 flex items-center gap-2"
-              >
-                <CheckCircle2 className="w-4 h-4" />
-                <span>Nộp bài & Chấm điểm tự động</span>
-              </button>
+              <div className="flex flex-col items-end gap-1">
+                <button
+                  type="button"
+                  onClick={handleSubmitQuiz}
+                  className="px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-sm shadow-sm transition-all hover:scale-102 flex items-center gap-2"
+                >
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>Nộp bài cho Thầy/Cô chấm điểm</span>
+                </button>
+                <p className="text-[11px] text-slate-500 italic">Thầy/Cô trực tiếp xem bài & cho điểm (AI không chấm tự động)</p>
+              </div>
             </div>
           )}
 
@@ -1126,12 +1130,44 @@ export const StudentQuizHub: React.FC<Props> = ({
                 <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-indigo-600 text-white shadow-md">
                   <Award className="w-8 h-8" />
                 </div>
-                <h3 className="text-2xl font-black text-slate-900">
-                  Điểm số của em: {quizResult.score}/10 điểm
-                </h3>
-                <p className="text-xs sm:text-sm text-slate-500">
-                  Hoàn thành trong {formatTimer(secondsElapsed)} • Đúng {quizResult.correctCount}/{quizResult.questions.length} câu trắc nghiệm
-                </p>
+                {quizResult.status === 'pending_grading' ? (
+                  <div className="space-y-2">
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-100 text-amber-800 text-xs font-black border border-amber-200">
+                      <Clock className="w-3.5 h-3.5 text-amber-600" />
+                      <span>Đang chờ Thầy/Cô chấm điểm • AI không tự động chấm</span>
+                    </span>
+                    <h3 className="text-xl sm:text-2xl font-black text-slate-900">
+                      Bài thi đã gửi tới Thầy/Cô thành công!
+                    </h3>
+                    <p className="text-xs sm:text-sm text-slate-600 max-w-md mx-auto">
+                      Thầy/Cô sẽ trực tiếp xem bài làm trắc nghiệm, các câu trả lời tự luận và <strong>{quizResult.submittedPhotos?.length || 0} ảnh bài làm trên vở</strong> của em để cho điểm và nhận xét chi tiết.
+                    </p>
+                    <p className="text-xs text-slate-500">
+                      Hoàn thành trong {formatTimer(secondsElapsed)} • Em đã hoàn thành bài thi
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-100 text-emerald-800 text-xs font-black border border-emerald-200">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>Thầy/Cô đã hoàn tất chấm điểm</span>
+                    </span>
+                    <h3 className="text-2xl sm:text-3xl font-black text-emerald-700">
+                      Điểm số của em: {quizResult.score}/10 điểm ⭐
+                    </h3>
+                    <p className="text-xs sm:text-sm text-slate-500">
+                      Giáo viên chấm: <strong>{quizResult.gradedBy || 'Thầy/Cô giáo'}</strong> • Hoàn thành trong {formatTimer(secondsElapsed)}
+                    </p>
+                    {quizResult.teacherFeedback && (
+                      <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-200 text-left text-xs text-amber-950 space-y-1 mt-3">
+                        <span className="font-extrabold text-amber-900 flex items-center gap-1.5">
+                          <span>📝 Lời nhận xét của Thầy/Cô:</span>
+                        </span>
+                        <p className="italic text-slate-700 pl-2 border-l-2 border-amber-400 font-medium">"{quizResult.teacherFeedback}"</p>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* Live Google Sheets sync banner */}
                 {syncStatus && (
@@ -1210,6 +1246,292 @@ export const StudentQuizHub: React.FC<Props> = ({
                   </button>
                 </div>
               </div>
+            </div>
+          )}
+        </div>
+      ) : studentTab === 'my_submissions' ? (
+        <div className="space-y-4">
+          {reviewingSubmission ? (
+            <div className="bg-white rounded-3xl border border-slate-200 shadow-md overflow-hidden space-y-0">
+              <div className="px-6 py-4 bg-slate-900 text-white flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-amber-400 text-slate-950">
+                      {reviewingSubmission.subject} • {reviewingSubmission.grade}
+                    </span>
+                    <span className="text-xs text-slate-300">
+                      Nộp lúc: {new Date(reviewingSubmission.timestamp).toLocaleString('vi-VN')}
+                    </span>
+                  </div>
+                  <h3 className="text-base sm:text-lg font-extrabold text-white mt-1">
+                    {reviewingSubmission.topic}
+                  </h3>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setReviewingSubmission(null)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-700 bg-white/10 hover:bg-white/20 text-white text-xs font-bold"
+                >
+                  <ArrowLeft className="w-3.5 h-3.5" />
+                  <span>Quay lại danh sách bài nộp</span>
+                </button>
+              </div>
+
+              {/* Status Banner */}
+              <div className="p-6 space-y-6">
+                {reviewingSubmission.status === 'pending_grading' ? (
+                  <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 flex items-start gap-3">
+                    <Clock className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                    <div className="space-y-1 text-xs text-amber-900">
+                      <p className="font-extrabold text-sm">
+                        Bài thi đang chờ Thầy/Cô chấm điểm (AI không tự động chấm)
+                      </p>
+                      <p className="text-amber-800">
+                        Thầy/Cô sẽ trực tiếp xem câu trả lời và ảnh bài giải viết tay của em để chấm điểm và nhận xét chi tiết.
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="p-5 rounded-2xl bg-emerald-50 border border-emerald-200 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="font-black text-emerald-800 text-base flex items-center gap-2">
+                        <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+                        <span>Thầy/Cô đã chấm: {reviewingSubmission.score}/10 điểm ⭐</span>
+                      </span>
+                      {reviewingSubmission.gradedBy && (
+                        <span className="text-xs font-semibold text-emerald-700">
+                          GV chấm: <strong>{reviewingSubmission.gradedBy}</strong>
+                        </span>
+                      )}
+                    </div>
+                    {reviewingSubmission.teacherFeedback && (
+                      <div className="p-3 bg-white rounded-xl border border-emerald-200 text-xs text-slate-700 italic">
+                        <strong>Lời nhận xét của Thầy/Cô:</strong> "{reviewingSubmission.teacherFeedback}"
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Submitted Photos Display & Link to Drive */}
+                {reviewingSubmission.submittedPhotos && reviewingSubmission.submittedPhotos.length > 0 && (
+                  <div className="p-4 rounded-2xl bg-sky-50/70 border border-sky-200 space-y-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="text-xs font-extrabold text-sky-900 flex items-center gap-1.5">
+                        <Camera className="w-4 h-4 text-sky-600" />
+                        <span>Ảnh bài làm đã gửi ({reviewingSubmission.submittedPhotos.length} ảnh):</span>
+                      </span>
+                      <a
+                        href={STUDENT_SUBMISSION_DRIVE_FOLDER_URL}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1 px-3 py-1 rounded-xl bg-white border border-sky-300 text-sky-800 text-xs font-bold hover:bg-sky-50 shadow-2xs"
+                      >
+                        <FolderOpen className="w-3.5 h-3.5 text-sky-600" />
+                        <span>Thư mục Google Drive</span>
+                        <ExternalLink className="w-3 h-3 text-slate-400" />
+                      </a>
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-2">
+                      {reviewingSubmission.submittedPhotos.map((photo) => (
+                        <div
+                          key={photo.id}
+                          className="rounded-xl overflow-hidden border border-slate-200 bg-white cursor-pointer hover:ring-2 hover:ring-sky-500 transition-all"
+                          onClick={() => setPreviewModalImage({ url: photo.previewUrl || `data:${photo.mimeType};base64,${photo.data}`, name: photo.name })}
+                        >
+                          <img
+                            src={photo.previewUrl || `data:${photo.mimeType};base64,${photo.data}`}
+                            alt={photo.name}
+                            className="w-full h-20 object-cover"
+                          />
+                          <p className="p-1 text-[10px] text-slate-700 truncate font-semibold">{photo.name}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Questions review if available */}
+                {reviewingSubmission.questions && reviewingSubmission.questions.length > 0 && (
+                  <div className="space-y-3">
+                    <h4 className="font-extrabold text-sm text-slate-900 border-b border-slate-100 pb-2">
+                      Phần Trắc Nghiệm ({reviewingSubmission.questions.length} câu)
+                    </h4>
+                    <div className="space-y-3">
+                      {reviewingSubmission.questions.map((q, idx) => {
+                        const studentChoice = reviewingSubmission.userAnswers?.[q.id] || '';
+                        const isCorrect = studentChoice.toUpperCase() === (q.correctAnswer || '').toUpperCase();
+                        return (
+                          <div key={q.id} className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 text-xs space-y-2">
+                            <div className="flex items-start justify-between gap-2">
+                              <span className="font-bold text-slate-900">
+                                Câu {idx + 1}: <MarkdownContent content={q.question} compact={true} />
+                              </span>
+                              <span className={`px-2 py-0.5 rounded-md font-extrabold text-[10px] ${
+                                isCorrect ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
+                              }`}>
+                                {isCorrect ? 'Đúng' : 'Sai'}
+                              </span>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-3 text-slate-600 text-[11px]">
+                              <span>Em chọn: <strong className={isCorrect ? 'text-emerald-700' : 'text-rose-600'}>{studentChoice || 'Chưa chọn'}</strong></span>
+                              <span>•</span>
+                              <span>Đáp án: <strong className="text-emerald-700">{q.correctAnswer}</strong></span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Essay questions review if available */}
+                {reviewingSubmission.essayQuestions && reviewingSubmission.essayQuestions.length > 0 && (
+                  <div className="space-y-4">
+                    <h4 className="font-extrabold text-sm text-slate-900 border-b border-slate-100 pb-2">
+                      Phần Tự Luận ({reviewingSubmission.essayQuestions.length} câu)
+                    </h4>
+                    {reviewingSubmission.essayQuestions.map((eq, eIdx) => {
+                      const studentAns = reviewingSubmission.essayAnswers?.[eq.id] || '';
+                      const fb = reviewingSubmission.essayFeedback?.[eq.id];
+                      return (
+                        <div key={eq.id} className="p-4 rounded-xl bg-slate-50 border border-slate-200 text-xs space-y-3">
+                          <span className="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 font-bold text-[11px]">
+                            Câu Tự luận {eIdx + 1} ({eq.points || 5} điểm)
+                          </span>
+                          <div className="font-bold text-slate-900">
+                            <MarkdownContent content={eq.question} compact={true} />
+                          </div>
+                          {studentAns && (
+                            <div className="p-3 rounded-lg bg-white border border-slate-200">
+                              <span className="text-[11px] font-bold text-slate-500 block mb-1">Bài giải em đã nhập:</span>
+                              <p className="text-slate-800 whitespace-pre-wrap">{studentAns}</p>
+                            </div>
+                          )}
+                          {reviewingSubmission.status === 'pending_grading' ? (
+                            <div className="p-2.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 font-medium">
+                              ⏳ Đang chờ Thầy/Cô chấm điểm câu này
+                            </div>
+                          ) : fb ? (
+                            <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-200 space-y-1">
+                              <span className="font-bold text-emerald-900">Điểm Thầy/Cô chấm: {fb.score}/{eq.points || 5}đ</span>
+                              {fb.comment && <p className="text-slate-700 italic">"{fb.comment}"</p>}
+                            </div>
+                          ) : null}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : (
+            /* LIST OF MY SUBMISSIONS */
+            <div className="space-y-4">
+              <div className="flex items-center justify-between px-1">
+                <h3 className="font-extrabold text-sm sm:text-base text-slate-900 flex items-center gap-2">
+                  <ClipboardCheck className="w-4 h-4 text-indigo-600" />
+                  <span>Danh sách bài thi em đã nộp ({mySubmissions.length})</span>
+                </h3>
+                <span className="text-xs text-slate-500">
+                  Thầy/Cô trực tiếp xem & chấm điểm (AI không tự động chấm)
+                </span>
+              </div>
+
+              {mySubmissions.length === 0 ? (
+                <div className="bg-white rounded-3xl p-8 border border-slate-200 text-center space-y-3">
+                  <div className="w-12 h-12 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto">
+                    <ClipboardCheck className="w-6 h-6" />
+                  </div>
+                  <h4 className="font-bold text-slate-800 text-sm sm:text-base">
+                    Em chưa nộp bài thi nào
+                  </h4>
+                  <p className="text-xs text-slate-500 max-w-md mx-auto">
+                    Hãy chuyển sang tab "Bộ đề luyện thi" để chọn đề thi của khối {selectedGrade} và làm bài nhé!
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setStudentTab('available_quizzes')}
+                    className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold"
+                  >
+                    Xem bộ đề thi ngay
+                  </button>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {mySubmissions.map((sub) => {
+                    const isPending = sub.status === 'pending_grading';
+                    const photoCount = sub.submittedPhotos?.length || 0;
+                    return (
+                      <div
+                        key={sub.id}
+                        className={`bg-white rounded-2xl p-5 border transition-all flex flex-col justify-between space-y-4 hover:shadow-md ${
+                          isPending ? 'border-amber-300 ring-1 ring-amber-200' : 'border-slate-200'
+                        }`}
+                      >
+                        <div className="space-y-2.5">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="px-2 py-0.5 rounded-lg text-[10px] font-extrabold bg-indigo-50 text-indigo-700">
+                              {sub.subject} • {sub.grade}
+                            </span>
+                            <span
+                              className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold flex items-center gap-1 ${
+                                isPending
+                                  ? 'bg-amber-100 text-amber-800 border border-amber-200 animate-pulse'
+                                  : 'bg-emerald-100 text-emerald-800'
+                              }`}
+                            >
+                              {isPending ? (
+                                <>
+                                  <Clock className="w-3 h-3" />
+                                  <span>Chờ Thầy/Cô chấm</span>
+                                </>
+                              ) : (
+                                <>
+                                  <CheckCircle2 className="w-3 h-3" />
+                                  <span>Đã chấm: {sub.score}/10đ</span>
+                                </>
+                              )}
+                            </span>
+                          </div>
+
+                          <h4 className="font-extrabold text-sm text-slate-900 line-clamp-2">
+                            {sub.topic}
+                          </h4>
+
+                          <p className="text-[11px] text-slate-400">
+                            Nộp lúc: {new Date(sub.timestamp).toLocaleString('vi-VN')}
+                          </p>
+
+                          {photoCount > 0 && (
+                            <span className="inline-flex items-center gap-1 text-[11px] font-bold text-sky-700 bg-sky-50 px-2 py-0.5 rounded-md border border-sky-200">
+                              <Camera className="w-3 h-3 text-sky-600" />
+                              <span>{photoCount} ảnh bài làm trên vở</span>
+                            </span>
+                          )}
+
+                          {!isPending && sub.teacherFeedback && (
+                            <p className="text-xs text-slate-600 line-clamp-2 italic bg-slate-50 p-2 rounded-lg border border-slate-100">
+                              💬 Nhận xét: "{sub.teacherFeedback}"
+                            </p>
+                          )}
+                        </div>
+
+                        <div className="pt-2 border-t border-slate-100">
+                          <button
+                            type="button"
+                            onClick={() => setReviewingSubmission(sub)}
+                            className="w-full py-2 px-3 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-extrabold text-xs transition-colors flex items-center justify-center gap-1"
+                          >
+                            <span>Xem lại bài làm & Điểm</span>
+                            <ChevronRight className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
         </div>

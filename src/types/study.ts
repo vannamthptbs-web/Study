@@ -118,6 +118,8 @@ export interface SubmittedPhotoFile {
   questionId?: number;
 }
 
+export type GradingStatus = 'pending_grading' | 'graded';
+
 export interface QuizSubmissionResult {
   id: string;
   timestamp: number;
@@ -129,12 +131,16 @@ export interface QuizSubmissionResult {
   grade: Grade;
   topic: string;
   examFormat?: ExamFormat;
-  score: number; // e.g. 8.0/10
+  status?: GradingStatus; // 'pending_grading' (chờ giáo viên chấm) hoặc 'graded' (giáo viên đã chấm)
+  score: number; // e.g. 8.0/10 (Điểm do giáo viên chấm hoặc tạm tính cho trắc nghiệm)
   correctCount: number;
   totalQuestions: number;
   userAnswers: Record<number, string>; // question id -> selected option letter
   essayAnswers?: Record<number, string>; // question id -> student essay answer
-  essayFeedback?: Record<number, { score: number; comment: string }>;
+  essayFeedback?: Record<number, { score: number; comment: string }>; // Điểm và nhận xét từng câu do giáo viên chấm
+  teacherFeedback?: string; // Nhận xét / lời phê chung của giáo viên
+  gradedBy?: string; // Tên giáo viên trực tiếp chấm bài
+  gradedAt?: number; // Thời điểm giáo viên hoàn thành chấm bài
   submittedPhotos?: SubmittedPhotoFile[];
   driveFolderUrl?: string;
   weakSubtopics: string[];
@@ -190,4 +196,4 @@ export interface SavedBankQuiz {
   data: QuizData;
 }
 
-export type ActiveTab = 'chat' | 'solver' | 'review' | 'quiz' | 'progress' | 'admin' | 'guide';
+export type ActiveTab = 'chat' | 'solver' | 'review' | 'quiz' | 'grading' | 'progress' | 'admin' | 'guide';

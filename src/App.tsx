@@ -20,6 +20,7 @@ import { AdminPanel } from './components/AdminPanel';
 import { AuthModal } from './components/AuthModal';
 import { FormulaReferenceModal } from './components/FormulaReferenceModal';
 import { QuestionBankModal } from './components/QuestionBankModal';
+import { StudentSubmissionGradingView } from './components/StudentSubmissionGradingView';
 import { UserGuide } from './components/UserGuide';
 import {
   getStoredProfile,
@@ -284,6 +285,13 @@ export default function App() {
             onOpenAuth={() => setAuthModalOpen(true)}
             selectedBankQuiz={selectedBankQuizForTaking}
             onClearSelectedBankQuiz={() => setSelectedBankQuizForTaking(null)}
+          />
+        )}
+
+        {activeTab === 'grading' && (
+          <StudentSubmissionGradingView
+            currentUser={profile}
+            onNotification={showToast}
           />
         )}
 

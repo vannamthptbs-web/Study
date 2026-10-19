@@ -16,8 +16,10 @@ import {
   updateSheetPassword,
   sendToAppsScriptWebhook,
   fetchSheetData,
+  autoSyncQuiz,
 } from './firebaseWorkspace';
 import { DEFAULT_TEACHER_BANK_QUIZZES } from '../data/defaultBankQuizzes';
+import { DEFAULT_STUDENT_SUBMISSIONS } from '../data/defaultSubmissions';
 
 const PROFILE_KEY = 'study_ai_active_profile_v3';
 const ACTIVE_SESSION_KEY = 'study_ai_active_session_user_v3';
@@ -438,15 +440,14 @@ export function saveChatHistory(messages: ChatMessage[], userId?: string): void 
 
 export function getStoredQuizHistory(filterUserId?: string): QuizSubmissionResult[] {
   try {
-    const raw = localStorage.getItem(QUIZ_HISTORY_KEY);
-    const list: QuizSubmissionResult[] = raw ? JSON.parse(raw) : [];
+    const all = getAllQuizHistory();
     if (!filterUserId || filterUserId === 'guest') {
-      return [];
+      return all.filter((q) => q.userId === 'guest' || q.userId === 'guest_student');
     }
     if (filterUserId === 'admin') {
-      return list; // Admin sees all quiz submissions
+      return all; // Admin sees all quiz submissions
     }
-    return list.filter((q) => q.userId === filterUserId);
+    return all.filter((q) => q.userId === filterUserId);
   } catch {
     return [];
   }
@@ -455,7 +456,27 @@ export function getStoredQuizHistory(filterUserId?: string): QuizSubmissionResul
 export function getAllQuizHistory(): QuizSubmissionResult[] {
   try {
     const raw = localStorage.getItem(QUIZ_HISTORY_KEY);
-    const list: QuizSubmissionResult[] = raw ? JSON.parse(raw) : [];
+    let list: QuizSubmissionResult[] = raw ? JSON.parse(raw) : [];
+
+    // If storage is empty, initialize with default student submissions
+    if (list.length === 0 && DEFAULT_STUDENT_SUBMISSIONS && DEFAULT_STUDENT_SUBMISSIONS.length > 0) {
+      list = [...DEFAULT_STUDENT_SUBMISSIONS];
+      localStorage.setItem(QUIZ_HISTORY_KEY, JSON.stringify(list));
+    } else if (DEFAULT_STUDENT_SUBMISSIONS && DEFAULT_STUDENT_SUBMISSIONS.length > 0) {
+      // Ensure seed submissions are present
+      const existingIds = new Set(list.map((q) => q.id));
+      let added = false;
+      DEFAULT_STUDENT_SUBMISSIONS.forEach((seed) => {
+        if (!existingIds.has(seed.id)) {
+          list.push(seed);
+          added = true;
+        }
+      });
+      if (added) {
+        localStorage.setItem(QUIZ_HISTORY_KEY, JSON.stringify(list));
+      }
+    }
+
     const seen = new Set<string>();
     return list.filter((q) => {
       if (!q || !q.id) return false;
@@ -464,28 +485,49 @@ export function getAllQuizHistory(): QuizSubmissionResult[] {
       return true;
     });
   } catch {
-    return [];
+    return DEFAULT_STUDENT_SUBMISSIONS || [];
+  }
+}
+
+export function getPendingSubmissionsCount(): number {
+  try {
+    const all = getAllQuizHistory();
+    return all.filter((s) => s.status === 'pending_grading').length;
+  } catch {
+    return 0;
   }
 }
 
 export function saveQuizResult(result: QuizSubmissionResult): void {
   try {
-    // Only save persistently if not a guest
-    if (!result.userId || result.userId === 'guest') {
-      return;
-    }
-
     const raw = localStorage.getItem(QUIZ_HISTORY_KEY);
     const allHistory: QuizSubmissionResult[] = raw ? JSON.parse(raw) : [];
-    allHistory.unshift(result);
-    localStorage.setItem(QUIZ_HISTORY_KEY, JSON.stringify(allHistory.slice(0, 100)));
 
-    const profile = getStoredProfile();
-    if (!profile.isGuest && profile.id === result.userId) {
-      profile.stats.quizzesCompleted += 1;
-      profile.stats.totalQuizScoreSum += result.score;
-      profile.xp += Math.round(result.score * 10);
-      saveProfile(profile);
+    // Default status to 'pending_grading' if has essay or photos or not graded yet
+    if (!result.status) {
+      const hasEssay = result.essayQuestions && result.essayQuestions.length > 0;
+      const hasPhotos = result.submittedPhotos && result.submittedPhotos.length > 0;
+      result.status = (hasEssay || hasPhotos) ? 'pending_grading' : 'pending_grading';
+    }
+
+    // Ensure valid user ID
+    if (!result.userId || result.userId === 'guest') {
+      result.userId = `hs-${Date.now()}`;
+      if (!result.userName) result.userName = 'Học sinh';
+    }
+
+    allHistory.unshift(result);
+    localStorage.setItem(QUIZ_HISTORY_KEY, JSON.stringify(allHistory.slice(0, 150)));
+
+    // If graded, update profile XP
+    if (result.status === 'graded') {
+      const profile = getStoredProfile();
+      if (!profile.isGuest && profile.id === result.userId) {
+        profile.stats.quizzesCompleted += 1;
+        profile.stats.totalQuizScoreSum += result.score;
+        profile.xp += Math.round(result.score * 10);
+        saveProfile(profile);
+      }
     }
 
     if (result.weakSubtopics && result.weakSubtopics.length > 0) {
@@ -515,6 +557,65 @@ export function saveQuizResult(result: QuizSubmissionResult): void {
     }
   } catch (e) {
     console.error('Lỗi lưu quiz result:', e);
+  }
+}
+
+/**
+ * Teacher grades a student's submission manually (AI is NOT used)
+ */
+export function updateQuizSubmissionGrading(
+  submissionId: string,
+  grading: {
+    score: number;
+    teacherFeedback: string;
+    essayFeedback?: Record<number, { score: number; comment: string }>;
+    gradedBy: string;
+  }
+): QuizSubmissionResult | null {
+  try {
+    const all = getAllQuizHistory();
+    const itemIndex = all.findIndex((q) => q.id === submissionId);
+    if (itemIndex === -1) return null;
+
+    const target = all[itemIndex];
+    const updated: QuizSubmissionResult = {
+      ...target,
+      status: 'graded',
+      score: grading.score,
+      teacherFeedback: grading.teacherFeedback,
+      essayFeedback: grading.essayFeedback || target.essayFeedback,
+      gradedBy: grading.gradedBy,
+      gradedAt: Date.now(),
+    };
+
+    all[itemIndex] = updated;
+    localStorage.setItem(QUIZ_HISTORY_KEY, JSON.stringify(all));
+
+    // Update student's stored profile if available
+    const profile = getStoredProfile();
+    if (!profile.isGuest && profile.id === updated.userId) {
+      profile.stats.quizzesCompleted += 1;
+      profile.stats.totalQuizScoreSum += updated.score;
+      profile.xp += Math.round(updated.score * 10);
+      saveProfile(profile);
+    }
+
+    // Auto sync updated graded result to Google Sheets
+    autoSyncQuiz(updated, {
+      id: updated.userId || 'student',
+      name: updated.userName || 'Học sinh',
+      email: updated.userEmail || '',
+      role: 'student',
+      grade: updated.grade,
+      stats: { questionsAsked: 0, problemsSolved: 0, reviewsCreated: 0, quizzesCompleted: 1, totalQuizScoreSum: updated.score },
+      xp: Math.round(updated.score * 10),
+      streakDays: 1,
+    } as any).catch(() => {});
+
+    return updated;
+  } catch (e) {
+    console.error('Lỗi cập nhật điểm giáo viên:', e);
+    return null;
   }
 }
 

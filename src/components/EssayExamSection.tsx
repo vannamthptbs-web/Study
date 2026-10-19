@@ -529,6 +529,7 @@ export const EssayExamSection: React.FC<Props> = ({
         grade: activeExam.grade || selectedGrade,
         topic: activeExam.topic || 'Đề tự luận',
         examFormat: 'essay',
+        status: 'pending_grading',
         score: finalScore,
         correctCount: Math.round((finalScore / 10) * activeExam.essayQuestions.length),
         totalQuestions: activeExam.essayQuestions.length,
@@ -545,7 +546,7 @@ export const EssayExamSection: React.FC<Props> = ({
       autoSyncQuiz(submissionResult, currentUser);
       syncQuizResult(submissionResult, currentUser).catch(() => {});
 
-      onNotification(`AI đã hoàn tất chấm điểm (${finalScore}/10 điểm) và tự động lưu kết quả vào Google Sheets! 📊`);
+      onNotification('Đã ghi nhận bài làm tự luận! Thầy/Cô sẽ trực tiếp xem bài làm và ảnh chụp vở ghi để chấm điểm cho em. 📊');
     } catch (e) {
       console.error(e);
       onNotification('Đã nộp bài thành công! Em hãy đối chiếu với đáp án mẫu bên dưới.');

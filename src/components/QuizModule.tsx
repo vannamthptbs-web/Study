@@ -19,6 +19,7 @@ import {
   FileText,
   PlusCircle,
   FolderOpen,
+  ClipboardCheck,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import {
@@ -33,7 +34,7 @@ import {
 } from '../types/study';
 import { SUBJECTS, POPULAR_TOPICS, GRADES } from '../data/subjects';
 import { generateQuizFromAI } from '../services/api';
-import { saveQuizResult, saveBankQuiz, getBankQuizzes } from '../services/storage';
+import { saveQuizResult, saveBankQuiz, getBankQuizzes, getPendingSubmissionsCount } from '../services/storage';
 import { autoSyncQuiz, syncQuizResult, getSpreadsheetUrl } from '../services/firebaseWorkspace';
 import { FileAttachmentInput } from './FileAttachmentInput';
 import { MarkdownContent } from './MarkdownContent';
@@ -41,6 +42,7 @@ import { FormulaToolbar } from './FormulaToolbar';
 import { EssayExamSection } from './EssayExamSection';
 import { MixedExamSection } from './MixedExamSection';
 import { StudentQuizHub } from './StudentQuizHub';
+import { StudentSubmissionGradingView } from './StudentSubmissionGradingView';
 
 interface Props {
   selectedGrade: Grade;
@@ -71,6 +73,7 @@ export const QuizModule: React.FC<Props> = ({
 }) => {
   const isTeacherOrAdmin = currentUser.role === 'teacher' || currentUser.role === 'admin';
   const [viewAsStudent, setViewAsStudent] = useState(false);
+  const [teacherMainTab, setTeacherMainTab] = useState<'creator' | 'grading'>('creator');
 
   // Mode: 'student_practice' or 'teacher_creator'
   const [subMode, setSubMode] = useState<'practice' | 'creator'>('creator');
@@ -340,6 +343,45 @@ export const QuizModule: React.FC<Props> = ({
     );
   }
 
+  if (teacherMainTab === 'grading') {
+    return (
+      <div className="space-y-4">
+        <div className="bg-white rounded-2xl p-3 border border-slate-200 flex flex-wrap items-center justify-between gap-2 shadow-xs">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setTeacherMainTab('creator')}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-xs font-bold text-slate-700"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" />
+              <span>Quay lại Bảng Soạn Đề</span>
+            </button>
+            <span className="text-xs font-bold text-slate-300">|</span>
+            <span className="text-xs font-extrabold text-amber-800 flex items-center gap-1.5 bg-amber-50 px-2.5 py-1 rounded-lg border border-amber-200">
+              <ClipboardCheck className="w-4 h-4 text-amber-600" />
+              <span>Khu vực Thầy/Cô Chấm bài học sinh (AI không tự động chấm)</span>
+            </span>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setViewAsStudent(true)}
+            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-amber-100 hover:bg-amber-200 text-amber-900 text-xs font-bold transition-colors"
+          >
+            <span>Xem giao diện Học sinh 👁️</span>
+          </button>
+        </div>
+
+        <StudentSubmissionGradingView
+          currentUser={currentUser}
+          onNotification={onNotification}
+        />
+      </div>
+    );
+  }
+
+  const pendingSubmissionsCount = getPendingSubmissionsCount();
+
   return (
     <div className="space-y-6">
       {/* Teacher Quiz Banner */}
@@ -352,8 +394,16 @@ export const QuizModule: React.FC<Props> = ({
             </div>
             <button
               type="button"
+              onClick={() => setTeacherMainTab('grading')}
+              className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-400 text-slate-950 text-xs font-black hover:bg-amber-300 transition-colors shadow-2xs"
+            >
+              <ClipboardCheck className="w-3.5 h-3.5 text-slate-900" />
+              <span>Chấm bài học sinh ({pendingSubmissionsCount} bài chờ) ✍️</span>
+            </button>
+            <button
+              type="button"
               onClick={() => setViewAsStudent(true)}
-              className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-amber-400 text-slate-950 text-xs font-black hover:bg-amber-300 transition-colors shadow-2xs"
+              className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-white/20 text-white text-xs font-bold hover:bg-white/30 transition-colors"
             >
               <span>Xem giao diện Học sinh 👁️</span>
             </button>

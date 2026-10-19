@@ -223,6 +223,7 @@ export const StudentQuizRoom: React.FC<Props> = ({
       grade: activeQuiz.grade,
       topic: activeQuiz.title,
       examFormat: activeQuiz.examFormat,
+      status: 'pending_grading',
       score: finalScore,
       correctCount: correctMcqCount,
       totalQuestions: totalQuestions,
